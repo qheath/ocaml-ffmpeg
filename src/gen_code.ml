@@ -29,7 +29,8 @@ let get_path filename =
 
 let rec id_to_pv_value id values =
   let id = if id.[0] >= '0' && id.[0] <= '9' then "_" ^ id else id in
-  let id = String.(uppercase(sub id 0 1) ^ lowercase(sub id 1 (length id - 1))) in
+  let id = String.(uppercase_ascii(sub id 0 1) ^
+                   lowercase_ascii(sub id 1 (length id - 1))) in
   let value = polymorphic_variant_string_to_c_value id in
 
   if List.mem value values then
@@ -70,7 +71,7 @@ let translate_enum_lines ic labels c_oc ml_oc mli_oc =
 
   if start_pat = "" || find_line ic start_re then (
 
-    let tab_name = enum_prefix ^ String.uppercase ml_type_name ^ "_TAB" in
+    let tab_name = enum_prefix ^ String.uppercase_ascii ml_type_name ^ "_TAB" in
     let tab_len = tab_name ^ "_LEN" in
 
     print_c["static const int64_t "; tab_name; "[][2] = {"];
