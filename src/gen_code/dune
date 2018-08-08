@@ -1,0 +1,14 @@
+(library
+ (name pv2vLib)
+ (modules ("Pv2vLib"))
+ (c_names pv2v_stubs))
+
+(executable
+ (name pv2v)
+ (modules ("Pv2v"))
+ (libraries pv2vLib))
+
+(executable
+ (name translate_enums)
+ (modules ("Translate_enums"))
+ (libraries str pv2vLib dune.configurator))

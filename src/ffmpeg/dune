@@ -1,0 +1,29 @@
+(rule
+ (targets channel_layout_stubs.h channel_layout.ml channel_layout.mli)
+ (deps (:gen ../gen_code/translate_enums.exe))
+ (action (run %{gen} channel_layout)))
+
+(rule
+ (targets sample_format_stubs.h sample_format.ml sample_format.mli)
+ (deps (:gen ../gen_code/translate_enums.exe))
+ (action (run %{gen} sample_format)))
+
+(rule
+ (targets pixel_format_stubs.h pixel_format.ml pixel_format.mli)
+ (deps (:gen ../gen_code/translate_enums.exe))
+ (action (run %{gen} pixel_format)))
+
+(rule
+ (targets codec_id_stubs.h codec_id.ml codec_id.mli)
+ (deps (:gen ../gen_code/translate_enums.exe))
+ (action (run %{gen} codec_id)))
+
+(rule
+ (targets swresample_options_stubs.h swresample_options.ml swresample_options.mli)
+ (deps (:gen ../gen_code/translate_enums.exe))
+ (action (run %{gen} swresample_options)))
+
+(rule
+ (targets polymorphic_variant_values_stubs.h)
+ (deps (:gen ../gen_code/pv2v.exe))
+ (action (run %{gen} %{targets})))
