@@ -46,7 +46,7 @@ If a sample format parameter is not provided, the sample format defined by the a
 @raise Failure if the conversion failed. *)
 end
 
-    
+
 (** Byte string with undefined sample format for interleaved channels. The sample format must be passed to the create function. *)
 module Bytes : sig
   type t = bytes val vk : vector_kind val sf : Sample_format.t

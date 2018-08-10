@@ -226,7 +226,7 @@ static int get_in_pixels_string(sws_t *sws, value *in_vector)
 
     memcpy(sws->in.slice[i], (uint8_t*)String_val(str), str_len);
   }
-  
+
   CAMLreturnT(int, nb_planes);
 }
 
@@ -241,7 +241,7 @@ static int get_in_pixels_ba(sws_t *sws, value *in_vector)
     sws->in.slice[i] = Caml_ba_data_val(Field(v, 0));
     sws->in.stride[i] = Int_val(Field(v, 1));
   }
-  
+
   CAMLreturnT(int, nb_planes);
 }
 
@@ -375,7 +375,7 @@ CAMLprim value ocaml_swscale_convert(value _sws, value _in_vector)
     ret = sws->copy_out(sws);
     if(ret < 0) Raise(EXN_FAILURE, "Failed to copy converted pixels");
   }
-  
+
   CAMLreturn(sws->out_vector);
 }
 
@@ -443,7 +443,7 @@ CAMLprim value ocaml_swscale_create(value flags_, value in_vector_kind_, value i
 
   for (i = 0; i < Wosize_val(flags_); i++)
     flags |= Flag_val(Field(flags_, i));
-  
+
   caml_release_runtime_system();
   sws->context = sws_getContext(sws->in.width, sws->in.height, sws->in.pixel_format,
                                 sws->out.width, sws->out.height, sws->out.pixel_format,
@@ -456,7 +456,7 @@ CAMLprim value ocaml_swscale_create(value flags_, value in_vector_kind_, value i
   }
 
   sws->release_out_vector = 1;
-  
+
   if(in_vector_kind == Frm) {
     sws->get_in_pixels = get_in_pixels_frame;
   }

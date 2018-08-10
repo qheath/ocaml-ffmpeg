@@ -4,10 +4,10 @@ open Avutil
 
 (** Return the audio input devices formats. *)
 val get_audio_input_formats : unit -> (input, audio)format list
-    
+
 (** Return the default audio input device format. *)
 val get_default_audio_input_format : unit -> (input, audio)format
-    
+
 (** Return the video input devices formats. *)
 val get_video_input_formats : unit -> (input, video)format list
 
@@ -16,10 +16,10 @@ val get_default_video_input_format : unit -> (input, video)format
 
 (** Return the audio output devices formats. *)
 val get_audio_output_formats : unit -> (output, audio)format list
-    
+
 (** Return the default audio output device format. *)
 val get_default_audio_output_format : unit -> (output, audio)format
-    
+
 (** Return the video output devices formats. *)
 val get_video_output_formats : unit -> (output, video)format list
 

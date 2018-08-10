@@ -51,19 +51,19 @@ module Audio : sig
 
   (** Return the list of supported channel layouts of the codec. *)
   val get_supported_channel_layouts : id -> Avutil.Channel_layout.t list
-      
+
   val find_best_channel_layout : id -> Avutil.Channel_layout.t -> Avutil.Channel_layout.t
   (** [Avcodec.Audio.find_best_channel_layout id default] return the best channel layout of the [id] codec or the [default] value if the codec has no channel layout. *)
 
   (** Return the list of supported sample formats of the codec. *)
   val get_supported_sample_formats : id -> Avutil.Sample_format.t list
-      
+
   val find_best_sample_format : id -> Avutil.Sample_format.t -> Avutil.Sample_format.t
   (** [Avcodec.Audio.find_best_sample_format id default] return the best sample format of the [id] codec or the [default] value if the codec has no sample format. *)
 
   (** Return the list of supported sample rates of the codec. *)
   val get_supported_sample_rates : id -> int list
-      
+
   val find_best_sample_rate : id -> int -> int
   (** [Avcodec.Audio.find_best_sample_rate id default] return the best sample rate of the [id] codec or the [default] value if the codec has no sample rate. *)
 
@@ -112,13 +112,13 @@ module Video : sig
 
   (** Return the list of supported frame rates of the codec. *)
   val get_supported_frame_rates : id -> Avutil.rational list
-      
+
   val find_best_frame_rate : id -> Avutil.rational -> Avutil.rational
   (** [Avcodec.Video.find_best_frame_rate id default] return the best frame rate of the [id] codec or the [default] value if the codec has no frame rate. *)
 
   (** Return the list of supported pixel formats of the codec. *)
   val get_supported_pixel_formats : id -> Avutil.Pixel_format.t list
-      
+
   val find_best_pixel_format : id -> Avutil.Pixel_format.t -> Avutil.Pixel_format.t
   (** [Avcodec.Video.find_best_pixel_format id default] return the best pixel format of the [id] codec or the [default] value if the codec has no pixel format. *)
 

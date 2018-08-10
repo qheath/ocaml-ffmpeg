@@ -1,4 +1,4 @@
-#ifndef _AV_STUBS_H_               
+#ifndef _AV_STUBS_H_
 #define _AV_STUBS_H_
 
 #include <caml/mlvalues.h>
@@ -27,4 +27,4 @@ value * ocaml_av_get_control_message_callback(struct AVFormatContext *ctx);
 
 void ocaml_av_set_control_message_callback(value *p_av, av_format_control_message c_callback, value *p_ocaml_callback);
 
-#endif // _AV_STUBS_H_ 
+#endif // _AV_STUBS_H_

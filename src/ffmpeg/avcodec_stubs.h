@@ -1,4 +1,4 @@
-#ifndef _AVCODEC_STUBS_H_               
+#ifndef _AVCODEC_STUBS_H_
 #define _AVCODEC_STUBS_H_
 
 #include <caml/mlvalues.h>
@@ -40,4 +40,4 @@ enum AVCodecID SubtitleCodecID_val(value v);
 
 value Val_SubtitleCodecID(enum AVCodecID id);
 
-#endif // _AVCODEC_STUBS_H_ 
+#endif // _AVCODEC_STUBS_H_
