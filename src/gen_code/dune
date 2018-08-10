@@ -12,3 +12,8 @@
  (name translate_enums)
  (modules ("Translate_enums"))
  (libraries str pv2vLib dune.configurator))
+
+(executable
+ (name discover)
+ (modules ("Discover"))
+ (libraries sexplib dune.configurator))

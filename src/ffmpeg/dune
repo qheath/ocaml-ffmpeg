@@ -24,6 +24,11 @@
  (action (run %{gen} swresample_options)))
 
 (rule
+ (targets c_flags.sexp c_library_flags.sexp)
+ (deps (:discover ../gen_code/discover.exe))
+ (action (run %{discover})))
+
+(rule
  (targets polymorphic_variant_values_stubs.h)
  (deps (:gen ../gen_code/pv2v.exe))
  (action (run %{gen} %{targets})))
