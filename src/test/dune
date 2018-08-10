@@ -1,0 +1,15 @@
+(executable
+ (name main)
+ (modules ("Resample" Info Main))
+ (libraries ffmpeg))
+
+(alias
+ (name runtest)
+ (deps
+  (:test main.exe)
+  (:foo ../examples/decode_audio/A4.ogg)
+  (:bar ../examples/transcode_aac/A4.mp4)
+  (:baz ../examples/encoding/out.mkv))
+ (action
+  (progn
+   (run %{test} %{foo} %{bar} %{baz}))))

@@ -1,7 +1,4 @@
 open FFmpeg
-open Avutil
-open Channel_layout
-open Sample_format
 
 module R = Swresample.Make (Swresample.FloatArray) (Swresample.S32Bytes)
 
@@ -20,8 +17,8 @@ module R10 = Swresample.Make (Swresample.S32Bytes) (Swresample.S32Bytes)
 module ConverterInput = FFmpeg.Swresample.Make(FFmpeg.Swresample.Frame)
 module Converter = ConverterInput(FFmpeg.Swresample.PlanarFloatArray)
 
-let logStep step v =
-  Gc.full_major (); (*Printf.printf"%s done\n%!" step; *)
+let logStep _step v =
+  (*Printf.printf"%s done\n%!" _step; *)
   v
 
 let write_bytes = output_bytes
@@ -32,7 +29,7 @@ let pi = 4.0 *. atan 1.0
 let rate = 44100
 let frate = float_of_int rate
 
-let test() =
+let test () =
   let dst1 = open_out_bin "test_swresample_out1.raw" in
   let r = R.create `Mono rate `Stereo 44100 in
 
@@ -106,11 +103,10 @@ let test() =
         let idx, is, ic = Av.open_input url |> Av.find_best_audio_stream in
         let rsp = Converter.from_codec ic `Stereo 44100 in
 
-        let p = try String.rindex url '/' + 1 with Not_found -> 0 in
-        let audio_output_filename = String.(sub url p (length url - p) ^ "." ^ string_of_int idx ^ ".s16le.raw") in
+        let audio_output_filename = Printf.sprintf "%s.%d.s16le.raw" (Filename.basename url) idx in
         let audio_output_file = open_out_bin audio_output_filename in
 
-        print_endline("Convert " ^ url ^ " to " ^ audio_output_filename);
+        Printf.printf "Convert %S to %S\n" url audio_output_filename ;
 
         is |> Av.iter_frame (fun frame ->
             Converter.convert rsp frame
@@ -121,5 +117,3 @@ let test() =
 
       with _ -> print_endline("No audio stream in "^url)
     );
-
-  Gc.full_major (); Gc.full_major (); 
