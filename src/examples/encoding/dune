@@ -1,0 +1,12 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets out.mkv)
+ (deps (:test main.exe))
+ (action (run %{test} %{targets} aac mpeg4 ass)))
+
+(alias
+ (name runtest)
+ (deps out.mkv))

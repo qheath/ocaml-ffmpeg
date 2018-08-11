@@ -1,0 +1,21 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets A4.mp3)
+ (deps (:test main.exe) (:in ../encode_audio/A4.flac))
+ (action
+  (progn
+   (run %{test} %{in} flac %{targets} libmp3lame))))
+
+(rule
+ (targets A4.ogg)
+ (deps (:test main.exe) (:in ../encode_audio/A4.mp2))
+ (action
+  (progn
+   (run %{test} %{in} mp2 %{targets} libvorbis))))
+
+(alias
+ (name runtest)
+ (deps A4.mp3 A4.ogg))

@@ -1,0 +1,13 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(alias
+ (name runtest)
+ (deps (:test main.exe))
+ (action
+  (progn
+   (run %{test})
+   (run %{test} http://37.187.70.49:80/canalb)
+   (run %{test} http://stream0.wfmu.org/freeform-128k wfmu.flac)
+   )))

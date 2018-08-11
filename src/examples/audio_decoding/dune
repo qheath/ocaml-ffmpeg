@@ -1,0 +1,21 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets A4.raw)
+ (deps (:test main.exe) (:in ../decode_audio/A4.mp3))
+ (action
+  (progn
+   (run %{test} %{in} A4))))
+
+(rule
+ (targets out.raw)
+ (deps (:test main.exe) (:in ../encoding/out.mkv))
+ (action
+  (progn
+   (run %{test} %{in} out))))
+
+(alias
+ (name runtest)
+ (deps A4.raw out.raw))

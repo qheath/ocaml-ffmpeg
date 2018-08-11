@@ -1,0 +1,12 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(alias
+ (name runtest)
+ (deps (:test main.exe))
+ (action
+  (progn
+   (run %{test} video.mp4 libx264)
+   (run %{test} video.mkv libx265)
+   (run %{test} video.ogg libtheora))))

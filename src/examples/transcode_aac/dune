@@ -1,0 +1,12 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets A4.mp4)
+ (deps (:test main.exe) (:in ../decode_audio/A4.ogg))
+ (action (run %{test} %{in} %{targets})))
+
+(alias
+ (name runtest)
+ (deps A4.mp4))

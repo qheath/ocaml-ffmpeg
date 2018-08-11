@@ -1,0 +1,19 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets A4.flac)
+ (deps (:test main.exe))
+ (action
+  (run %{test} A4.flac flac)))
+
+(rule
+ (targets A4.mp2)
+ (deps (:test main.exe))
+ (action
+  (run %{test} A4.mp2 mp2)))
+
+(alias
+ (name runtest)
+ (deps A4.flac A4.mp2))

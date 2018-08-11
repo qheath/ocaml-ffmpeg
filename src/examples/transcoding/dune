@@ -1,0 +1,12 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(rule
+ (targets out.mp4)
+ (deps (:test main.exe) (:in ../encoding/out.mkv))
+ (action (run %{test} %{in} %{targets})))
+
+(alias
+ (name runtest)
+ (deps out.mp4))

@@ -1,0 +1,11 @@
+(executable
+ (name main)
+ (libraries ffmpeg))
+
+(alias
+ (name runtest)
+ (deps (:test main.exe) (:foo ../encoding/out.mkv) (:bar ../transcoding/out.mp4))
+ (action
+  (progn
+   (run %{test} %{foo})
+   (run %{test} %{bar}))))

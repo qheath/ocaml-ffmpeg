@@ -1,0 +1,16 @@
+(alias
+ (name runtest)
+ (deps
+  (alias encode_audio/runtest)
+  (alias encode_video/runtest)
+  (alias encoding/runtest)
+  (alias decode_audio/runtest)
+  (alias audio_decoding/runtest)
+  (alias audio_device/runtest)
+  (alias remuxing/runtest)
+  (alias transcode_aac/runtest)
+  (alias transcoding/runtest)
+  (alias demuxing_decoding/runtest)
+  (alias player/runtest)))
+;  dune build @src/examples/audio_device/runtest
+;  dune build @src/examples/player/runtest
