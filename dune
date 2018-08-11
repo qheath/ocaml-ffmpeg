@@ -1,0 +1,11 @@
+(env
+ (dev
+  (flags (:standard -w +A-4@5-7@8-9@11@12@20-35-44-45-48-50 -thread)))
+ (release
+  (flags (:standard -w +A-4@5-7@8-9@11@12@20-35-44-45-48-50 -thread))))
+
+(alias
+ (name runtest)
+ (deps
+  (alias src/examples/runtest)
+  (alias src/test/runtest)))
