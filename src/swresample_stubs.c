@@ -69,8 +69,8 @@ static int alloc_data(struct audio_t * audio, int nb_samples)
 static int get_in_samples_frame(swr_t *swr, value *in_vector)
 {
   AVFrame *frame = Frame_val(*in_vector);
-  int nb_channels = av_frame_get_channels(frame);
-    
+  int nb_channels = frame->channels;
+
   if(nb_channels != swr->in.nb_channels) Raise(EXN_FAILURE, "Swresample failed to convert %d channels : %d channels were expected", nb_channels, swr->in.nb_channels);
 
   if(frame->format != swr->in.sample_fmt) Raise(EXN_FAILURE, "Swresample failed to convert %s sample format : %s sample format were expected", av_get_sample_fmt_name(frame->format), av_get_sample_fmt_name(swr->in.sample_fmt));
@@ -109,7 +109,7 @@ static int get_in_samples_planar_string(swr_t *swr, value *in_vector)
 
   for (i = 0; i < swr->in.nb_channels; i++) {
     str = Field(*in_vector, i);
-    
+
     if(str_len != caml_string_length(str)) Raise(EXN_FAILURE, "Swresample failed to convert channel %d's %lu bytes : %d bytes were expected", i, caml_string_length(str), str_len);
 
     memcpy(swr->in.data[i], (uint8_t*)String_val(str), str_len);
@@ -128,7 +128,7 @@ static int get_in_samples_float_array(swr_t *swr, value *in_vector)
   }
 
   double * pcm = (double*)swr->in.data[0];
-  
+
   for (i = 0; i < linesize; i++) {
     pcm[i] = Double_field(*in_vector, i);
   }
@@ -150,11 +150,11 @@ static int get_in_samples_planar_float_array(swr_t *swr, value *in_vector)
 
   for (i = 0; i < swr->in.nb_channels; i++) {
     fa = Field(*in_vector, i);
-    
+
     if(nb_words != Wosize_val(fa)) Raise(EXN_FAILURE, "Swresample failed to convert channel %d's %lu bytes : %d bytes were expected", i, Wosize_val(fa), nb_words);
 
     double * pcm = (double*)swr->in.data[i];
-    
+
     for(j = 0; j < nb_samples; j++) {
       pcm[j] = Double_field(fa, j);
     }
@@ -176,7 +176,7 @@ static int get_in_samples_planar_ba(swr_t *swr, value *in_vector)
 
   for (int i = 0; i < swr->in.nb_channels; i++) {
     ba = Field(*in_vector, i);
-    
+
     if(nb_samples != Caml_ba_array_val(ba)->dim[0]) Raise(EXN_FAILURE, "Swresample failed to convert channel %d's %ld bytes : %d bytes were expected", i, Caml_ba_array_val(ba)->dim[0], nb_samples);
 
     swr->in.data[i] = Caml_ba_data_val(ba);
@@ -189,7 +189,7 @@ static int alloc_out_frame(swr_t *swr, int nb_samples)
 {
   CAMLparam0();
   CAMLlocal1(vector);
-  
+
   AVFrame * frame = av_frame_alloc();
 
   if( ! frame) Raise(EXN_FAILURE, "Failed to allocate resampling output frame");
@@ -273,7 +273,7 @@ static int convert_to_planar_string(swr_t *swr, int in_nb_samples, int out_nb_sa
 
   size_t len = ret * swr->out.bytes_per_samples;
   int i;
-  
+
   if(ret != swr->out_vector_nb_samples || swr->release_out_vector) {
     for(i = 0; i < swr->out.nb_channels; i++) {
       Store_field(swr->out_vector, i, caml_alloc_string(len));
@@ -468,7 +468,7 @@ void swresample_free(swr_t *swr)
     }
     free(swr->out.data);
   }
-  
+
   if(swr->out_vector) caml_remove_generational_global_root(&swr->out_vector);
 
   free(swr);
@@ -570,7 +570,7 @@ swr_t * swresample_create(vector_kind in_vector_kind, int64_t in_channel_layout,
   caml_release_runtime_system();
   swr_t * swr = (swr_t*)calloc(1, sizeof(swr_t));
   if( ! swr) Fail("Failed to allocate Swresample context");
-  
+
   SwrContext *ctx = swresample_set_context(swr,
                                            in_channel_layout, in_sample_fmt, in_sample_rate,
                                            out_channel_layout, out_sample_fmt, out_sample_rate,

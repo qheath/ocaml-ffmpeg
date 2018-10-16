@@ -91,7 +91,7 @@ void value_of_codec_parameters_copy(AVCodecParameters *src, value * pvalue)
   CodecParameters_val(*pvalue) = dst;
 }
 
-  
+
 /***** AVPacket *****/
 
 static void finalize_packet(value v)
@@ -157,7 +157,7 @@ CAMLprim value ocaml_avcodec_packet_to_bytes(value _packet)
   ans = caml_alloc_string(packet->size);
 
   memcpy((uint8_t*)String_val(ans), packet->data, packet->size);
-  
+
   CAMLreturn(ans);
 }
 
@@ -199,10 +199,6 @@ static struct custom_operations parser_ops =
 
 static parser_t * avcodec_create_parser(enum AVCodecID codec_id)
 {
-  if( ! register_lock_manager()) return NULL;
-
-  avcodec_register_all();
-
   AVCodec * codec = avcodec_find_decoder(codec_id);
   if ( ! codec) Fail("Failed to find parser's decoder");
 
@@ -214,7 +210,7 @@ static parser_t * avcodec_create_parser(enum AVCodecID codec_id)
     free_parser(parser);
     Fail("Failed to init parser context");
   }
-  
+
   parser->codec_context = avcodec_create_AVCodecContext(codec);
 
   if( ! parser->codec_context) {
@@ -250,7 +246,7 @@ CAMLprim value ocaml_avcodec_parse_packet(value _parser, value _data, value _ofs
   size_t init_len = Int_val(_len);
   size_t len = init_len;
   int ret = 0;
-  
+
   AVPacket *packet = av_packet_alloc();
   if( ! packet) Raise(EXN_FAILURE, "Failed to allocate packet");
 
@@ -285,7 +281,7 @@ CAMLprim value ocaml_avcodec_parse_packet(value _parser, value _data, value _ofs
     av_packet_free(&packet);
     ans = Val_int(0);
   }
-  
+
   CAMLreturn(ans);
 }
 
@@ -340,10 +336,6 @@ static struct custom_operations codec_context_ops =
 
 static codec_context_t * avcodec_create_codec_context(enum AVCodecID codec_id, int decoder)
 {
-  if( ! register_lock_manager()) return NULL;
-
-  avcodec_register_all();
-
   codec_context_t * ctx = (codec_context_t*)calloc(1, sizeof(codec_context_t));
   if ( ! ctx) Fail("Failed to allocate codec context");
 
@@ -393,9 +385,9 @@ CAMLprim value ocaml_avcodec_create_context(value _codec_id, value _decoder, val
 static AVCodecContext * avcodec_open_codec(codec_context_t *ctx, AVFrame *frame)
 {
   if( ! frame) Fail("Failed to open encoder without frame");
-  
+
   AVCodec *codec = ctx->codec;
-  
+
   if(codec->type != AVMEDIA_TYPE_AUDIO && codec->type != AVMEDIA_TYPE_VIDEO) Fail("Failed to open unsupported encoder type");
 
   ctx->codec_context = avcodec_alloc_context3(codec);
@@ -461,7 +453,7 @@ CAMLprim value ocaml_avcodec_send_packet(value _ctx, value _packet)
 
   if (ret == AVERROR(EAGAIN)) ans = PVV_Again;
   else ans = PVV_Ok;
-  
+
   CAMLreturn(ans);
 }
 
@@ -478,7 +470,7 @@ CAMLprim value ocaml_avcodec_receive_frame(value _ctx)
     ret = avcodec_receive_frame(ctx->codec_context, frame);
   }
   caml_acquire_runtime_system();
-  
+
   if (!frame) Raise(EXN_FAILURE, "Failed to allocate frame");
 
   if (ret < 0) {
@@ -491,7 +483,7 @@ CAMLprim value ocaml_avcodec_receive_frame(value _ctx)
     value_of_frame(frame, &val_frame);
     Store_field(ans, 0, val_frame);
   }
-  
+
   CAMLreturn(ans);
 }
 
@@ -511,7 +503,7 @@ static int send_audio_fifo_frame(codec_context_t *ctx)
     if(ctx->flushed) frame_size = fifo_size;
     else return AVERROR_EOF;
   }
-    
+
   if(fifo_size > 0) {
     ret = av_frame_make_writable(frame);
     if (ret < 0) return ret;
@@ -555,7 +547,7 @@ static int send_frame(codec_context_t *ctx, AVFrame *frame)
       frame->pts = ctx->pts;
       ctx->pts += frame->nb_samples;
     }
-  
+
     ret = avcodec_send_frame(ctx->codec_context, frame);
   }
   else {
@@ -564,7 +556,7 @@ static int send_frame(codec_context_t *ctx, AVFrame *frame)
       int fifo_size = av_audio_fifo_size(fifo);
 
       fifo_size += frame->nb_samples;
-    
+
       ret = av_audio_fifo_realloc(fifo, fifo_size);
       if (ret < 0) return ret;
 
@@ -597,7 +589,7 @@ CAMLprim value ocaml_avcodec_send_frame(value _ctx, value _frame)
 
   if (ret == AVERROR(EAGAIN)) ans = PVV_Again;
   else ans = PVV_Ok;
-  
+
   CAMLreturn(ans);
 }
 
@@ -633,7 +625,7 @@ CAMLprim value ocaml_avcodec_receive_packet(value _ctx)
     ans = caml_alloc(1, 0);
     value_of_ffmpeg_packet(packet, &val_packet);
     Store_field(ans, 0, val_packet);
-  }  
+  }
   CAMLreturn(ans);
 }
 
@@ -647,10 +639,6 @@ CAMLprim value ocaml_avcodec_flush_encoder(value _ctx) {
 
 static enum AVCodecID find_codec_id(const char *name)
 {
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
-
   AVCodec * codec = avcodec_find_encoder_by_name(name);
   if( ! codec) Raise(EXN_FAILURE, "Failed to find %s codec", name);
 
@@ -684,10 +672,6 @@ CAMLprim value ocaml_avcodec_get_supported_channel_layouts(value _codec_id)
   int i;
   List_init(list);
 
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
-
   AVCodec * codec = avcodec_find_encoder(AudioCodecID_val(_codec_id));
 
   if(codec && codec->channel_layouts) {
@@ -705,10 +689,6 @@ CAMLprim value ocaml_avcodec_get_supported_sample_formats(value _codec_id)
   int i;
   List_init(list);
 
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
-
   AVCodec * codec = avcodec_find_encoder(AudioCodecID_val(_codec_id));
 
   if(codec && codec->sample_fmts) {
@@ -725,10 +705,6 @@ CAMLprim value ocaml_avcodec_get_supported_sample_rates(value _codec_id)
   CAMLlocal2(list, cons);
   int i;
   List_init(list);
-
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
 
   AVCodec * codec = avcodec_find_encoder(AudioCodecID_val(_codec_id));
 
@@ -778,7 +754,7 @@ CAMLprim value ocaml_avcodec_parameters_audio_copy(value _codec_id, value _chann
   CAMLlocal1(ans);
 
   value_of_codec_parameters_copy(CodecParameters_val(_cp), &ans);
-  
+
   AVCodecParameters * dst = CodecParameters_val(ans);
 
   dst->codec_id = AudioCodecID_val(_codec_id);
@@ -812,10 +788,6 @@ CAMLprim value ocaml_avcodec_get_supported_frame_rates(value _codec_id)
   int i;
   List_init(list);
 
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
-
   AVCodec * codec = avcodec_find_encoder(VideoCodecID_val(_codec_id));
 
   if(codec && codec->supported_framerates) {
@@ -834,10 +806,6 @@ CAMLprim value ocaml_avcodec_get_supported_pixel_formats(value _codec_id)
   CAMLlocal2(list, cons);
   int i;
   List_init(list);
-
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, "%s", ocaml_av_error_msg);
-
-  avcodec_register_all();
 
   AVCodec * codec = avcodec_find_encoder(VideoCodecID_val(_codec_id));
 
@@ -885,7 +853,7 @@ CAMLprim value ocaml_avcodec_parameters_video_copy(value _codec_id, value _width
   CAMLlocal1(ans);
 
   value_of_codec_parameters_copy(CodecParameters_val(_cp), &ans);
-  
+
   AVCodecParameters * dst = CodecParameters_val(ans);
 
   dst->codec_id = VideoCodecID_val(_codec_id);
@@ -930,7 +898,7 @@ CAMLprim value ocaml_avcodec_parameters_subtitle_copy(value _codec_id, value _cp
   CAMLlocal1(ans);
 
   value_of_codec_parameters_copy(CodecParameters_val(_cp), &ans);
-  
+
   AVCodecParameters * dst = CodecParameters_val(ans);
 
   dst->codec_id = SubtitleCodecID_val(_codec_id);

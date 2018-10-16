@@ -18,14 +18,12 @@ static value get_input_devices(AVInputFormat * (*input_device_next)(AVInputForma
   AVInputFormat *fmt = NULL;
   int len = 0;
 
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, ocaml_av_error_msg);
-
   caml_release_runtime_system();
   avdevice_register_all();
   caml_acquire_runtime_system();
 
   while((fmt = input_device_next(fmt))) len++;
-  
+
   ans = caml_alloc_tuple(len);
 
   int i = 0;
@@ -40,13 +38,13 @@ static value get_input_devices(AVInputFormat * (*input_device_next)(AVInputForma
 
   CAMLreturn(ans);
 }
-  
+
 CAMLprim value ocaml_avdevice_get_audio_input_formats(value unit)
 {
   CAMLparam0();
   CAMLreturn(get_input_devices(av_input_audio_device_next));
 }
-  
+
 CAMLprim value ocaml_avdevice_get_video_input_formats(value unit)
 {
   CAMLparam0();
@@ -60,14 +58,12 @@ static value get_output_devices(AVOutputFormat * (*output_device_next)(AVOutputF
   AVOutputFormat *fmt = NULL;
   int len = 0;
 
-  if( ! register_lock_manager()) Raise(EXN_FAILURE, ocaml_av_error_msg);
-
   caml_release_runtime_system();
   avdevice_register_all();
   caml_acquire_runtime_system();
 
   while((fmt = output_device_next (fmt))) len++;
-  
+
   ans = caml_alloc_tuple(len);
 
   int i = 0;
@@ -82,13 +78,13 @@ static value get_output_devices(AVOutputFormat * (*output_device_next)(AVOutputF
 
   CAMLreturn(ans);
 }
-  
+
 CAMLprim value ocaml_avdevice_get_audio_output_formats(value unit)
 {
   CAMLparam0();
   CAMLreturn(get_output_devices(av_output_audio_device_next));
 }
-  
+
 CAMLprim value ocaml_avdevice_get_video_output_formats(value unit)
 {
   CAMLparam0();
@@ -147,7 +143,7 @@ CAMLprim value ocaml_avdevice_app_to_dev_control_message(value _message, value _
   }
 
   AVFormatContext * format_context = ocaml_av_get_format_context(&_av);
-  
+
   caml_release_runtime_system();
   int ret = avdevice_app_to_dev_control_message(format_context, message_type, data, data_size);
   caml_acquire_runtime_system();

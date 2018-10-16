@@ -48,54 +48,6 @@ void ocaml_ffmpeg_register_thread() {
   }
 }
 
-static int lock_manager(void **mtx, enum AVLockOp op)
-{
-  switch(op) {
-  case AV_LOCK_CREATE:
-    *mtx = malloc(sizeof(pthread_mutex_t));
-
-    if(!*mtx)
-      return 1;
-    return !!pthread_mutex_init(*mtx, NULL);
-
-  case AV_LOCK_OBTAIN:
-    return !!pthread_mutex_lock(*mtx);
-
-  case AV_LOCK_RELEASE:
-    return !!pthread_mutex_unlock(*mtx);
-
-  case AV_LOCK_DESTROY:
-    pthread_mutex_destroy(*mtx);
-    free(*mtx);
-    return 0;
-  }
-  return 1;
-}
-
-int register_lock_manager()
-{
-  static int registering_done = 0;
-  static pthread_mutex_t registering_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-  if( ! registering_done) {
-    pthread_mutex_lock(&registering_mutex);
- 
-    if( ! registering_done) {
-
-      int ret = av_lockmgr_register(lock_manager);
-
-      if(ret < 0) {
-        Log("Failed to register lock manager : %s", av_err2str(ret));
-      }
-      else {
-        registering_done = 1;
-      }
-      pthread_mutex_unlock(&registering_mutex);
-    }
-  }
-  return registering_done;
-} 
-
 
 /**** Rational ****/
 void value_of_rational(const AVRational * rational, value * pvalue) {
@@ -147,7 +99,7 @@ static void av_log_ocaml_callback(void* ptr, int level, const char* fmt, va_list
 CAMLprim value ocaml_avutil_set_log_callback(value callback)
 {
   CAMLparam1(callback);
-  
+
   if (ocaml_log_callback == (value)NULL) {
     ocaml_log_callback = callback;
     caml_register_generational_global_root(&ocaml_log_callback);
@@ -381,7 +333,7 @@ CAMLprim value ocaml_avutil_video_get_frame_bigarray_planes(value _frame, value 
 
   int nb_planes = av_pix_fmt_count_planes((enum AVPixelFormat)frame->format);
   if(nb_planes < 0) Raise(EXN_FAILURE, "Failed to get frame planes count : %s", av_err2str(nb_planes));
-  
+
   ans = caml_alloc_tuple(nb_planes);
 
   for(i = 0; i < nb_planes; i++) {
@@ -461,7 +413,7 @@ CAMLprim value ocaml_avutil_subtitle_create_frame(value _start_time, value _end_
   if( ! subtitle->rects) Raise(EXN_FAILURE, "Failed to allocate subtitle frame");
 
   subtitle->num_rects = nb_lines;
-  
+
   int i;
   for(i = 0; i < nb_lines; i++) {
     const char * text = String_val(Field(_lines, i));

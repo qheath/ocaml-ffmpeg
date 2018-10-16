@@ -1,4 +1,4 @@
-#ifndef _AVUTIL_STUBS_H_               
+#ifndef _AVUTIL_STUBS_H_
 #define _AVUTIL_STUBS_H_
 
 #include <stdio.h>
@@ -52,9 +52,7 @@ extern char ocaml_av_exn_msg[];
 
 void ocaml_ffmpeg_register_thread();
 
-int register_lock_manager();
 
-  
 /**** AVRational ****/
 #define rational_of_value(v) ((AVRational){Int_val(Field((v), 0)), Int_val(Field((v), 1))})
 
@@ -110,4 +108,4 @@ AVSubtitle * alloc_subtitle_value(value * pvalue);
 
 int subtitle_header_default(AVCodecContext *avctx);
 
-#endif // _AVUTIL_STUBS_H_ 
+#endif // _AVUTIL_STUBS_H_
