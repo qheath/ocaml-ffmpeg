@@ -2,4 +2,4 @@
 
 (name ffmpeg)
 
-(version 0.2.0-p2)
+(version 0.2.0-p3)

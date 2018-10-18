@@ -412,6 +412,32 @@ CAMLprim value ocaml_av_get_duration(value _av, value _stream_index, value _time
   CAMLreturn(ans);
 }
 
+CAMLprim value ocaml_av_get_start_time(value _av, value _stream_index, value _time_format)
+{
+  CAMLparam2(_av, _time_format);
+  CAMLlocal1(ans);
+  av_t * av = Av_val(_av);
+  int index = Int_val(_stream_index);
+
+  if( ! av->format_context) Raise(EXN_FAILURE, "Failed to get closed input start time");
+
+  int64_t start_time = av->format_context->start_time;
+  int64_t num = 1;
+  int64_t den = AV_TIME_BASE;
+
+  if(index >= 0) {
+    start_time = av->format_context->streams[index]->start_time;
+    num = (int64_t)av->format_context->streams[index]->time_base.num;
+    den = (int64_t)av->format_context->streams[index]->time_base.den;
+  }
+
+  int64_t second_fractions = second_fractions_of_time_format(_time_format);
+
+  ans = caml_copy_int64((start_time * second_fractions * num) / den);
+
+  CAMLreturn(ans);
+}
+
 CAMLprim value ocaml_av_reuse_output(value _av, value _reuse_output)
 {
   CAMLparam2(_av, _reuse_output);

@@ -22,6 +22,9 @@ external open_input_format : (input, _)format -> input container = "ocaml_av_ope
 external _get_duration : input container -> int -> Time_format.t -> Int64.t = "ocaml_av_get_duration"
 let get_input_duration ?(format=`Second) i = _get_duration i (-1) format
 
+external _get_start_time : input container -> int -> Time_format.t -> Int64.t = "ocaml_av_get_start_time"
+let get_input_start_time ?(format=`Second) i = _get_start_time i (-1) format
+
 external _get_metadata : input container -> int -> (string * string) list = "ocaml_av_get_metadata"
 let get_input_metadata i = List.rev(_get_metadata i (-1))
 
@@ -64,6 +67,7 @@ let get_input s = s.container
 let get_index s = s.index
 
 let get_duration ?(format=`Second) s = _get_duration s.container s.index format
+let get_start_time ?(format=`Second) s = _get_start_time s.container s.index format
 let get_metadata s = List.rev(_get_metadata s.container s.index)
 
 external select : (input, _)stream -> unit = "ocaml_av_select_stream"

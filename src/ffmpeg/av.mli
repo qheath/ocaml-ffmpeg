@@ -41,6 +41,9 @@ val open_input_format : (input, _)format -> input container
 val get_input_duration : ?format:Time_format.t -> input container -> Int64.t
 (** [Av.get_input_duration ~format:fmt input] return the duration of an [input] in the [fmt] time format (in second by default). *)
 
+val get_input_start_time : ?format:Time_format.t -> input container -> Int64.t
+(** [Av.get_input_start_time ~format:fmt input] return the start time of an [input] in the [fmt] time format (in second by default). *)
+
 (** Return the input tag (key, vlue) list. *)
 val get_input_metadata : input container -> (string * string) list
 
@@ -84,6 +87,9 @@ val set_time_base : (_, _)stream -> Avutil.rational -> unit
 
 val get_duration : ?format:Time_format.t -> (input, _)stream -> Int64.t
 (** Same as {!Av.get_input_duration} for the input streams. *)
+
+val get_start_time : ?format:Time_format.t -> (input, _)stream -> Int64.t
+(** Same as {!Av.get_input_start_time} for the input streams. *)
 
 val get_metadata : (input, _)stream -> (string * string) list
 (** Same as {!Av.get_input_metadata} for the input streams. *)
