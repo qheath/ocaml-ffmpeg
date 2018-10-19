@@ -69,6 +69,8 @@ let get_index s = s.index
 let get_duration ?(format=`Second) s = _get_duration s.container s.index format
 let get_start_time ?(format=`Second) s = _get_start_time s.container s.index format
 let get_metadata s = List.rev(_get_metadata s.container s.index)
+external get_r_frame_rate : (_, _)stream -> Avutil.rational = "ocaml_av_get_stream_r_frame_rate"
+external get_nb_frames : (_, _)stream -> int = "ocaml_av_get_stream_nb_frames"
 
 external select : (input, _)stream -> unit = "ocaml_av_select_stream"
 

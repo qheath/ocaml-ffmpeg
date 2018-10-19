@@ -1,8 +1,11 @@
-0.2.1-p2 (19-12-2018)
+0.2.1-p3 (19-12-2018)
 =====
 * Dune
 * Av
   - `get_(input_)start_time`
+  - `get_r_frame_rate`
+  - `get_nb_frames`
+
 
 0.2.1 (11-12-2018)
 =====

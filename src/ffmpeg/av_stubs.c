@@ -438,6 +438,28 @@ CAMLprim value ocaml_av_get_start_time(value _av, value _stream_index, value _ti
   CAMLreturn(ans);
 }
 
+CAMLprim value ocaml_av_get_stream_r_frame_rate(value _stream) {
+  CAMLparam1(_stream);
+  CAMLlocal1(ans);
+  av_t * av = StreamAv_val(_stream);
+  int index = StreamIndex_val(_stream);
+
+  value_of_rational(&av->format_context->streams[index]->r_frame_rate, &ans);
+
+  CAMLreturn(ans);
+}
+
+CAMLprim value ocaml_av_get_stream_nb_frames(value _stream) {
+  CAMLparam1(_stream);
+  CAMLlocal1(ans);
+  av_t * av = StreamAv_val(_stream);
+  int index = StreamIndex_val(_stream);
+
+  ans = Val_int(av->format_context->streams[index]->nb_frames);
+
+  CAMLreturn(ans);
+}
+
 CAMLprim value ocaml_av_reuse_output(value _av, value _reuse_output)
 {
   CAMLparam2(_av, _reuse_output);

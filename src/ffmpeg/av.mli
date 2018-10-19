@@ -94,6 +94,12 @@ val get_start_time : ?format:Time_format.t -> (input, _)stream -> Int64.t
 val get_metadata : (input, _)stream -> (string * string) list
 (** Same as {!Av.get_input_metadata} for the input streams. *)
 
+val get_r_frame_rate : (_, _)stream -> Avutil.rational
+(** [Av.get_r_frame_rate stream] return the estimated frame rate of the [stream]. *)
+
+val get_nb_frames : (_, _)stream -> int
+(** [Av.get_nb_frames stream] return the number of frames of the [stream]. *)
+
 val select : (input, _)stream -> unit
 (** [Av.select stream] select the input [stream] for reading. @raise Failure if the selection failed. *)
 
