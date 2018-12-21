@@ -1,0 +1,55 @@
+;(executable
+; (name generate)
+; (modules "Generate")
+; (libraries ffmpeg))
+;
+;(rule
+; (targets in.mp4)
+; (deps
+;  (:generate generate.exe))
+; (action
+;  (progn
+;   (run %{generate} %{targets} 8))))
+
+(executable
+ (name info)
+ (modules ("Info"))
+ (libraries ffmpeg))
+
+(executable
+ (name change)
+ (modules "Change")
+ (libraries ffmpeg))
+
+(rule
+ (targets out.mp4)
+ (deps
+  (:change change.exe)
+  (:in in.mp4))
+ (action
+  (progn
+   (run ffprobe -loglevel quiet %{in} -hide_banner -show_frames -print_format compact=nk=1:p=0)
+   (run mpv -pause -quiet %{in})
+   (run %{change} %{in} %{targets}))))
+
+(alias
+ (name runtest)
+ (deps (:out out.mp4))
+ (action
+  (progn
+   (run ffprobe -loglevel quiet %{out} -hide_banner -show_frames -print_format compact=nk=1:p=0)
+   (run mpv -pause -quiet %{out})
+  )))
+
+;(alias
+; (name runtest)
+; (deps
+;  (:in in.mp4)
+;  (:out out.mp4)
+;  (:info info.exe))
+; (action
+;  (progn
+;   ;(run %{info} %{in})
+;   ;(run %{info} %{out})
+;   ;(run mpv -pause -quiet %{out})
+;   )))
