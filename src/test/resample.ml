@@ -29,7 +29,7 @@ let pi = 4.0 *. atan 1.0
 let rate = 44100
 let frate = float_of_int rate
 
-let test () =
+let test files =
   let dst1 = open_out_bin "test_swresample_out1.raw" in
   let r = R.create `Mono rate `Stereo 44100 in
 
@@ -98,22 +98,23 @@ let test () =
     done
   in
 
-  Sys.argv |> Array.to_list |> List.tl |> List.iter(fun url ->
-      try
-        let idx, is, ic = Av.open_input url |> Av.find_best_audio_stream in
-        let rsp = Converter.from_codec ic `Stereo 44100 in
+  let f url =
+    try
+      let idx, is, ic = Av.open_input url |> Av.find_best_audio_stream in
+      let rsp = Converter.from_codec ic `Stereo 44100 in
 
-        let audio_output_filename = Printf.sprintf "%s.%d.s16le.raw" (Filename.basename url) idx in
-        let audio_output_file = open_out_bin audio_output_filename in
+      let audio_output_filename = Printf.sprintf "%s.%d.s16le.raw" (Filename.basename url) idx in
+      let audio_output_file = open_out_bin audio_output_filename in
 
-        Printf.printf "Convert %S to %S\n" url audio_output_filename ;
+      Printf.printf "Convert %S to %S\n" url audio_output_filename ;
 
-        is |> Av.iter_frame (fun frame ->
-            Converter.convert rsp frame
-            |> output_planar_float_to_s16le audio_output_file);
+      is |> Av.iter_frame (fun frame ->
+          Converter.convert rsp frame
+          |> output_planar_float_to_s16le audio_output_file);
 
-        Av.get_input is |> Av.close;
-        close_out audio_output_file;
+      Av.get_input is |> Av.close;
+      close_out audio_output_file;
 
-      with _ -> print_endline("No audio stream in "^url)
-    );
+    with _ -> print_endline("No audio stream in "^url)
+  in
+  List.iter f files
