@@ -12,11 +12,6 @@
 ;   (run %{generate} %{targets} 8))))
 
 (executable
- (name info)
- (modules ("Info"))
- (libraries ffmpeg))
-
-(executable
  (name change)
  (modules "Change")
  (libraries ffmpeg))
@@ -40,16 +35,3 @@
    (run ffprobe -loglevel quiet %{out} -hide_banner -show_frames -print_format compact=nk=1:p=0)
    (run mpv -pause -quiet %{out})
   )))
-
-;(alias
-; (name runtest)
-; (deps
-;  (:in in.mp4)
-;  (:out out.mp4)
-;  (:info info.exe))
-; (action
-;  (progn
-;   ;(run %{info} %{in})
-;   ;(run %{info} %{out})
-;   ;(run mpv -pause -quiet %{out})
-;   )))

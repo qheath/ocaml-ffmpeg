@@ -1,5 +1,5 @@
 opam-version: "2.0"
-version: "0.2.1-p3"
+version: "0.2.1-p4"
 maintainer: "Quentin Heath <12143333+qheath@users.noreply.github.com>"
 authors: "The Savonet Team <savonet-users@lists.sourceforge.net>"
 homepage: "https://github.com/qheath/ocaml-ffmpeg"
@@ -31,7 +31,6 @@ build: [
   ["dune" "build" "-p" name "-j" jobs "@install"]
   ["dune" "build" "-p" name "-j" jobs "@runtest"] {with-test}
 ]
-install: [make "install"]
 remove: ["ocamlfind" "remove" "ffmpeg"]
 depexts: [
   [
