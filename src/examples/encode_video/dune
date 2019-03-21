@@ -2,11 +2,27 @@
  (name main)
  (libraries ffmpeg))
 
-(alias
- (name runtest)
+(rule
+ (targets video.mp4)
  (deps (:test main.exe))
  (action
   (progn
-   (run %{test} video.mp4 libx264)
-   (run %{test} video.mkv libx265)
-   (run %{test} video.ogg libtheora))))
+   (run %{test} %{targets} libx264))))
+
+(rule
+ (targets video.mkv)
+ (deps (:test main.exe))
+ (action
+  (progn
+   (run %{test} %{targets} libx265))))
+
+(rule
+ (targets video.ogg)
+ (deps (:test main.exe))
+ (action
+  (progn
+   (run %{test} %{targets} libtheora))))
+
+(alias
+ (name runtest)
+ (deps video.mp4 video.mkv video.ogg))

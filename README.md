@@ -47,30 +47,31 @@ The [API documentation is available here](https://www.liquidsoap.info/ocaml-ffmp
 Examples
 ========
 
-- [audio_decoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/audio_decoding/audio_decoding.ml):
+- [audio_decoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/audio_decoding/main.ml):
   read frames from an audio file and convert them into bytes
-- [audio_device](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/audio_device/audio_device.ml):
+- [audio_device](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/audio_device/main.ml):
   read 500 audio frames from an input audio device or an URL and write
   them into an output audio device or a file
-- [decode_audio](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/decode_audio/decode_audio.ml):
+- [decode_audio](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/decode_audio/main.ml):
   parse packets from a mapped file, decode them and write the resulting
   frames into a file
-- [demuxing_decoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/demuxing_decoding/demuxing_decoding.ml):
+- [demuxing_decoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/demuxing_decoding/main.ml):
   demuxing and decoding audio, video and subtitle frames from a file,
   converts them into bytes and write them in raw files
-- [encode_audio](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/encode_audio/encode_audio.ml):
+- [encode_audio](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/encode_audio/main.ml):
   convert a float array into stereo frames and encode them into packets
-- [encode_video](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/encode_video/encode_video.ml):
+- [encode_video](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/encode_video/main.ml):
   create video frames and write them encoded into a file
-- [encoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/encoding/encoding.ml):
+- [encoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/encoding/main.ml):
   create a multimedia file with audio and video streams
-- [player](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/player/player.ml):
+- [player](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/player/main.ml):
   read a multimedia file and write audio and video frames to output
   devices
-- [remuxing](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/remuxing/remuxing.ml):
+- [remuxing](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/remuxing/main.ml):
   remuxing multimedia file packets without decoding them
-- [transcode_aac](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/transcode_aac/transcode_aac.ml):
+- [setpts](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/setpts/main.ml):
+- [transcode_aac](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/transcode_aac/main.ml):
   transcode an audio file into an AAC audio file
-- [transcoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/examples/transcoding/transcoding.ml):
+- [transcoding](https://github.com/qheath/ocaml-ffmpeg/blob/master/src/examples/transcoding/main.ml):
   transcode audio streams into the AAC codec, video streams into the
   H264 codec and write them to an output file
