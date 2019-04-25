@@ -61,6 +61,10 @@ val time_base : unit -> rational
 (** {5 Logging utilities} *)
 
 module Log : sig
+  type flag = [
+    | `Skip_repeated
+  ]
+
   type level = [
     | `Quiet
     | `Panic
@@ -72,6 +76,8 @@ module Log : sig
     | `Debug
   ]
 
+  val set_flags      : flag list -> unit
+  val int_of_level   : level -> int
   val set_level      : level -> unit
   val set_callback   : (string -> unit) -> unit
   val clear_callback : unit -> unit

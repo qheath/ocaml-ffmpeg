@@ -71,6 +71,13 @@ int64_t second_fractions_of_time_format(value time_format)
 }
 
 /**** Logging ****/
+CAMLprim value ocaml_avutil_set_log_flags(value flags)
+{
+  CAMLparam0();
+  av_log_set_flags(Int_val(flags));
+  CAMLreturn(Val_unit);
+}
+
 CAMLprim value ocaml_avutil_set_log_level(value level)
 {
   CAMLparam0();

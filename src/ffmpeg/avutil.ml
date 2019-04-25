@@ -43,6 +43,19 @@ module Time_format = struct
 end
 
 module Log = struct
+  type flag = [
+    | `Skip_repeated
+  ]
+
+  let int_of_flag = function
+    | `Skip_repeated -> 1
+
+  external set_flags : int -> unit = "ocaml_avutil_set_log_flags"
+
+  let set_flags flags =
+    let aux i flag = i lor (int_of_flag flag) in
+    set_flags (List.fold_left aux 0 flags)
+
   type level = [
     | `Quiet
     | `Panic
