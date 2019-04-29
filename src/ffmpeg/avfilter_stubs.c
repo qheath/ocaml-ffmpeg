@@ -1,5 +1,7 @@
 #include "ffmpeg.h"
 
+#include "avfilter_stubs.h"
+
 #include <libavfilter/buffersrc.h>
 #include <libavfilter/buffersink.h>
 
@@ -84,6 +86,24 @@ static void convert_filters_in_out(AVFilterInOut **pfirst,
 
 
 /***** Filter (AVFilterContext) *****/
+
+char *describe_filter_link(AVFilterContext *ctx, int pad_idx, int in)
+{
+    AVFilterPad *pads = in ? ctx->input_pads  : ctx->output_pads;
+    int       nb_pads = in ? ctx->nb_inputs   : ctx->nb_outputs;
+    AVIOContext *pb;
+    uint8_t *res = NULL;
+
+    if (avio_open_dyn_buf(&pb) < 0)
+        exit(1);
+
+    avio_printf(pb, "%s", ctx->filter->name);
+    if (nb_pads > 1)
+        avio_printf(pb, ":%s", avfilter_pad_get_name(pads, pad_idx));
+    avio_w8(pb, 0);
+    avio_close_dyn_buf(pb, &res);
+    return res;
+}
 
 static void finalise_filter(value v)
 {
