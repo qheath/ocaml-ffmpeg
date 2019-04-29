@@ -42,3 +42,8 @@
  (targets polymorphic_variant_values_stubs.h)
  (deps (:gen ../gen_code/pv2v.exe))
  (action (run %{gen} %{targets})))
+
+(executable
+ (name offmpeg)
+ (modules ("Offmpeg"))
+ (libraries ffmpeg))

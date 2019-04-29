@@ -4,8 +4,24 @@
  (release
   (flags (:standard -w +A-4@5-7@8-9@11@12@20-35-44-45-48-50 -thread))))
 
+(rule
+  (targets out.mp4)
+  (deps (:offmpeg src/ffmpeg/offmpeg.exe) (:in in.mp4))
+  (action (run %{offmpeg} %{in} %{targets})))
+
+(alias
+ (name play)
+ (deps (:mp4 out.mp4))
+ (action (run mpv -pause %{mp4})))
+
+(alias
+ (name probe)
+ (deps (:mp4 out.mp4))
+ (action (run ffprobe -v error -hide_banner -show_entries frame=pkt_pts -of default=nokey=1:noprint_wrappers=1 %{mp4})))
+
 (alias
  (name runtest)
  (deps
   (alias src/examples/runtest)
-  (alias src/test/runtest)))
+  (alias src/test/runtest)
+  (alias probe)))
