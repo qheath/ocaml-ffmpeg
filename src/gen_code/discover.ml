@@ -8,19 +8,7 @@ let write_sexp path strings =
 
 module PC = Configurator.V1.Pkg_config
 
-let main =
-  let mandatory_packages = [
-    "libavutil",[
-      "channel_layout.h","HAS_CHANNEL_LAYOUT" ;
-      "frame.h","HAS_FRAME" ;
-    ] ;
-    "libswscale",[] ;
-    "libavformat",[] ;
-    "libavcodec",[] ;
-    "libswresample",[] ;
-  ] and optional_packages = [
-    "libavdevice",[] ;
-  ] in
+let main (mandatory_packages,optional_packages) =
   let default = PC.({
       libs = [] ;
       cflags = ["/usr/include"] ;
@@ -88,19 +76,37 @@ let main =
   in
   fun configurator ->
     let package_conf =
-      match PC.get configurator with
-      | None ->
-        Printf.eprintf "WARNING: pkg-config not found\n" ;
-        default
-      | Some pkg_config ->
-        match get_package_conf pkg_config with
+      match match PC.get configurator with
         | None ->
-          Printf.eprintf "WARNING: pkg-config not working as expected\n" ;
-          default
-        | Some package_conf -> package_conf
+          Printf.eprintf "WARNING: pkg-config not found\n" ;
+          None
+        | Some pkg_config ->
+          match get_package_conf pkg_config with
+          | None ->
+            Printf.eprintf "WARNING: pkg-config not working as expected\n" ;
+            None
+          | Some package_conf -> Some package_conf
+      with
+      | None -> default
+      | Some package_conf -> package_conf
     in
-    write_sexp "c_flags.sexp" (package_conf.PC.cflags) ;
-    write_sexp "c_library_flags.sexp" package_conf.PC.libs
+    write_sexp "c_flags.sexp"
+      package_conf.PC.cflags ;
+    write_sexp "c_library_flags.sexp"
+      package_conf.PC.libs
 
 let () =
-  Configurator.V1.main ~name:"ffmpeg" main
+  let mandatory_packages = [
+    "libavutil",[
+      "channel_layout.h","HAS_CHANNEL_LAYOUT" ;
+      "frame.h","HAS_FRAME" ;
+    ] ;
+    "libswscale",[] ;
+    "libavformat",[] ;
+    "libavcodec",[] ;
+    "libswresample",[] ;
+    "libavfilter",[] ;
+  ] and optional_packages = [
+    "libavdevice",[] ;
+  ] in
+  Configurator.V1.main ~name:"ffmpeg" @@ main (mandatory_packages,optional_packages)
