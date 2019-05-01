@@ -4,7 +4,6 @@ module File : sig
   type 'a t = {
     payload      : payload ;
     eof          : bool ;
-    (* true if eof reached *)
     streams      : 'a array
   }
 
@@ -28,10 +27,10 @@ end = struct
   type 'a t = {
     payload      : payload ;
   (*
-    filename     : string ;
     context      : avformat_context ;
    *)
     eof          : bool ;
+    (* true if eof reached *)
   (*
     thread_queue : avthread_message_queue ;
     thread       : pthread_t ;
@@ -82,8 +81,10 @@ module Stream : sig
 
   type payload
   type t = {
-    payload : payload ;
-    filter  : Avfilter.Input.t ;
+    payload    : payload ;
+    filter     : Avfilter.Input.t ;
+    data_size  : int64 ;
+    nb_packets : int64 ;
   }
 
   val open_source_streams : Avfilter.Graph.t -> t option File.t -> Avfilter.Graph.t * t option File.t
@@ -96,8 +97,12 @@ end = struct
 
   type payload
   type t = {
-    payload : payload ;
-    filter  : Avfilter.Input.t ;
+    payload    : payload ;
+    filter     : Avfilter.Input.t ;
+    data_size  : int64 ;
+    (* combined size of all the packets read *)
+    nb_packets : int64 ;
+    (* number of packets successfully read for this stream *)
   }
 
   let iteri f file =
@@ -141,6 +146,8 @@ end = struct
     {
       payload ;
       filter ;
+      data_size = 0L ;
+      nb_packets = 0L ;
     }
 
   external get_input_stream_index_from_filter : File.payload -> Avfilter.Graph.input -> int = "get_input_stream_index_from_filter"
@@ -200,7 +207,7 @@ end = struct
       let filter = stream.filter in
       Some (Avfilter.Input.get_nb_failed_requests filter, filter)
 
-  external decode_packet_and_feed_filters : payload -> Avfilter.Input.t -> Avutil.video Avcodec.Packet.t -> unit = "decode_packet_and_feed_filters"
+  external decode_packet_and_feed_filters : File.payload -> int -> payload -> Avfilter.Input.t -> Avutil.video Avcodec.Packet.t -> int64 * unit = "decode_packet_and_feed_filters"
   let decode_packet_and_feed_filters file packet =
     let streams = file.File.streams in
     let stream_index =
@@ -211,10 +218,20 @@ end = struct
       match streams.(stream_index) with
       | None -> ()
       | Some stream ->
-        decode_packet_and_feed_filters
-          stream.payload
-          stream.filter
-          packet
+        let pkt_size,() =
+          decode_packet_and_feed_filters
+            file.File.payload stream_index
+            stream.payload
+            stream.filter
+            packet
+        in
+        streams.(stream_index) <-
+          Some { stream with
+                 data_size =
+                   Int64.add stream.data_size pkt_size ;
+                 nb_packets =
+                   Int64.succ stream.nb_packets ;
+               }
 
   external flush_input_stream : File.payload -> int -> payload -> Avfilter.Input.t -> unit = "flush_input_stream"
   let flush_input_stream file i stream =
@@ -272,12 +289,34 @@ let init file =
   File.init_thread file ;
   Stream.dump_mappings file
 
+let print_input_stream_stats stream i =
+  Format.printf
+    "  Input stream #%d (?): %Ld packets read (%Ld bytes); ? frames decoded; \n"
+    i
+    stream.Stream.nb_packets
+    stream.Stream.data_size ;
+
 external print_input_file_stats : File.payload -> Stream.payload option array -> unit = "print_input_file_stats"
 let print_file_stats input_file =
+  Format.printf "Input file #%d (?):\n" 0 ;
   print_input_file_stats
     input_file.File.payload
-    (Array.map
-       (function
+    (Array.mapi
+       (fun i -> function
          | None -> None
-         | Some stream -> Some stream.Stream.payload)
+         | Some stream ->
+           print_input_stream_stats stream i ;
+           Some stream.Stream.payload)
        input_file.File.streams) ;
+  let total_size,total_packets =
+    Array.fold_left
+      (fun (accum_size,accum_packets) -> function
+         | None -> accum_size,accum_packets
+         | Some stream ->
+           Int64.add accum_size stream.Stream.data_size,
+           Int64.add accum_packets stream.Stream.nb_packets)
+      (0L,0L) input_file.File.streams
+  in
+  Format.printf
+    "  Total: %Ld packets (%Ld bytes) demuxed\n"
+      total_packets total_size

@@ -17,18 +17,18 @@
 /* cause the input thread to stop */
 static void free_input_thread(InputFile *input_file)
 {
-    AVPacket pkt;
+  AVPacket pkt;
 
-    if (!input_file || !input_file->in_thread_queue)
-        return;
-    /* cause the input thread to stop and to set AVERROR_EOF to be
-     * received */
-    av_thread_message_queue_set_err_send(input_file->in_thread_queue, AVERROR_EOF);
-    while (av_thread_message_queue_recv(input_file->in_thread_queue, &pkt, 0) >= 0)
-        av_packet_unref(&pkt);
+  if (!input_file || !input_file->in_thread_queue)
+    return;
+  /* cause the input thread to stop and to set AVERROR_EOF to be
+   * received */
+  av_thread_message_queue_set_err_send(input_file->in_thread_queue, AVERROR_EOF);
+  while (av_thread_message_queue_recv(input_file->in_thread_queue, &pkt, 0) >= 0)
+    av_packet_unref(&pkt);
 
-    pthread_join(input_file->thread, NULL);
-    av_thread_message_queue_free(&input_file->in_thread_queue);
+  pthread_join(input_file->thread, NULL);
+  av_thread_message_queue_free(&input_file->in_thread_queue);
 }
 
 void free_input_file(InputFile *input_file)
@@ -364,15 +364,16 @@ CAMLprim value make_input_stream(value _input_file,
   int i;
   InputFile *input_file = InputFile_val(_input_file);
   int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
   int nb_codec_options = Wosize_val(_codec_options);
   AVDictionary *codec_options = NULL;
 
   InputStream *input_stream =
     alloc_input_stream(&_input_stream);
 
-  input_stream->st = input_file->ctx->streams[index];
+  st = input_file->ctx->streams[index];
   /* enable all frames */
-  input_stream->st->discard = AVDISCARD_NONE;
+  st->discard = AVDISCARD_NONE;
 
   for (i=0; i<nb_codec_options; i++) {
     _codec_option = Field(_codec_options, i);
@@ -382,25 +383,17 @@ CAMLprim value make_input_stream(value _input_file,
   }
 
   input_stream->dec_ctx =
-    setup_codec_context(codec_options, input_stream->st);
+    setup_codec_context(codec_options, st);
 
   /* express the decoding offset in terms of AV_TIME_BASE_Q,
    * in case the first packets don't have valid dts fields */
   input_stream->next_dts =
-    input_stream->st->avg_frame_rate.num ?
-    - av_rescale_q(input_stream->dec_ctx->has_b_frames, av_inv_q(input_stream->st->avg_frame_rate), AV_TIME_BASE_Q) : 0l;
-  input_stream->dts             = 0l;
+    st->avg_frame_rate.num ?
+    - av_rescale_q(input_stream->dec_ctx->has_b_frames, av_inv_q(st->avg_frame_rate), AV_TIME_BASE_Q) : 0l;
 
   input_stream->next_pts        = 0l;
-  input_stream->pts             = 0l;
 
-  input_stream->min_pts         = INT64_MAX;
-  input_stream->max_pts         = INT64_MIN;
-
-  input_stream->data_size       = 0l;
-  input_stream->nb_packets      = 0l;
   input_stream->frames_decoded  = 0l;
-  input_stream->samples_decoded = 0l;
 
   CAMLreturn(_input_stream);
 }
@@ -493,22 +486,15 @@ CAMLprim value init_input_filter(value _input_file,
 /***** Print *****/
 
 static void print_input_stream_stats(value _input_stream,
-    int index,
-    uint64_t *ptotal_packets,
-    uint64_t *ptotal_size)
+    int index)
 {
   InputStream *input_stream =
     InputStream_val(_input_stream);
 
-  *ptotal_size    += input_stream->data_size;
-  *ptotal_packets += input_stream->nb_packets;
-
   av_log(NULL, AV_LOG_VERBOSE,
-      "  Input stream #%d:%d (%s): %"PRIu64" packets read (%"PRIu64" bytes); %"PRIu64" frames decoded; \n",
+      "  Input stream #%d:%d (%s): %"PRIu64" frames decoded; \n",
       0, index,
       av_get_media_type_string(input_stream->dec_ctx->codec_type),
-      input_stream->nb_packets,
-      input_stream->data_size,
       input_stream->frames_decoded);
 }
 
@@ -523,7 +509,6 @@ CAMLprim value print_input_file_stats(value _input_file,
   int nb_input_streams =
     Wosize_val(_input_streams);
   int i;
-  uint64_t total_packets = 0, total_size = 0;
 
   av_log(NULL, AV_LOG_VERBOSE,
       "Input file #%d (%s):\n",
@@ -533,13 +518,9 @@ CAMLprim value print_input_file_stats(value _input_file,
     _input_stream_opt = Field(_input_streams, i);
     if (Is_block(_input_stream_opt)) {
       print_input_stream_stats(Field(_input_stream_opt, 0),
-          i, &total_packets, &total_size);
+          i);
     }
   }
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "  Total: %"PRIu64" packets (%"PRIu64" bytes) demuxed\n",
-      total_packets, total_size);
 
   CAMLreturn(Val_unit);
 }
@@ -676,9 +657,17 @@ static void send_frame_to_filters(InputStream *ist,
   send_frame_to_filter(input_filter, frame);
 }
 
-static void filter_frame(InputStream *ist,
+static void filter_frame(value _input_file,
+    value _index,
+    value _input_stream,
     value _input_filter, AVFrame *frame)
 {
+  InputFile *input_file = InputFile_val(_input_file);
+  int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
+  InputStream *ist =
+    InputStream_val(_input_stream);
+
   ist->frames_decoded++;
 
   frame->pts =
@@ -687,29 +676,29 @@ static void filter_frame(InputStream *ist,
   if ((frame->pts) != AV_NOPTS_VALUE) {
     ist->next_pts =
       av_rescale_q(frame->pts,
-          ist->st->time_base, AV_TIME_BASE_Q);
+          st->time_base, AV_TIME_BASE_Q);
   } else {
     frame->pts =
       av_rescale_q(ist->next_pts,
-          AV_TIME_BASE_Q, ist->st->time_base);
+          AV_TIME_BASE_Q, st->time_base);
   }
-  ist->pts = ist->next_pts;
 
   ist->next_pts += (frame->pkt_duration > 0) ?
     // use the explicit duration
     av_rescale_q(frame->pkt_duration,
-        ist->st->time_base, AV_TIME_BASE_Q) :
+        st->time_base, AV_TIME_BASE_Q) :
     // use an aproximation based on the average framerate
     av_rescale_q(1,
         av_inv_q(ist->dec_ctx->framerate),
         AV_TIME_BASE_Q);
 
   av_log(NULL, AV_LOG_ERROR,
-      "input frame: pts=%ld(%ld->%ld)\n",
-      frame->pts, ist->pts, ist->next_pts);
+      "input frame: pts=%ld(%ld)\n",
+      frame->pts, ist->next_pts);
 
-  if (ist->st->sample_aspect_ratio.num)
-    frame->sample_aspect_ratio = ist->st->sample_aspect_ratio;
+  if (st->sample_aspect_ratio.num)
+    frame->sample_aspect_ratio =
+      st->sample_aspect_ratio;
 
   send_frame_to_filters(ist,
       _input_filter,
@@ -721,10 +710,17 @@ static void filter_frame(InputStream *ist,
 /* 0: received and filtered a frame
  * AVERROR(EAGAIN): needs a packet to be sent for another frame to be received
  * AVERROR_EOF: decoder was already flushed */
-static int receive_and_filter_frame(InputStream *ist,
+static int receive_and_filter_frame(value _input_file,
+    value _index,
+    value _input_stream,
     value _input_filter)
 {
   int ret;
+  InputFile *input_file = InputFile_val(_input_file);
+  int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
+  InputStream *ist =
+    InputStream_val(_input_stream);
   AVFrame *frame;
 
   if (!(frame = av_frame_alloc())) {
@@ -735,7 +731,9 @@ static int receive_and_filter_frame(InputStream *ist,
 
   switch (ret = receive_frame(ist->dec_ctx, frame)) {
     case 0:
-      filter_frame(ist,
+      filter_frame(_input_file,
+          _index,
+          _input_stream,
           _input_filter,
           frame);
 
@@ -750,7 +748,7 @@ static int receive_and_filter_frame(InputStream *ist,
     default:
       av_log(NULL, AV_LOG_FATAL,
           "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, ist->st->index, av_err2str(ret));
+          0, st->index, av_err2str(ret));
       exit(1);
   }
 
@@ -762,12 +760,19 @@ static int receive_and_filter_frame(InputStream *ist,
 /* receive frames from the decoder and send them through the filters
  * AVERROR(EAGAIN): decoder needs more packets to produce frames
  * AVERROR_EOF: decoder was flushed */
-static int receive_and_filter_frames(InputStream *ist,
+static int receive_and_filter_frames(value _input_file,
+    value _index,
+    value _input_stream,
     value _input_filter)
 {
   int ret;
+  InputFile *input_file = InputFile_val(_input_file);
+  int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
 
-  while (!(ret = receive_and_filter_frame(ist,
+  while (!(ret = receive_and_filter_frame(_input_file,
+          _index,
+          _input_stream,
           _input_filter))) {
   }
 
@@ -781,23 +786,31 @@ static int receive_and_filter_frames(InputStream *ist,
     default:
       av_log(NULL, AV_LOG_FATAL,
           "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, ist->st->index, av_err2str(ret));
+          0, st->index, av_err2str(ret));
       exit(1);
   }
 
   return ret;
 }
 
-static int try_to_send_and_filter_packet(value _input_stream,
+static int try_to_send_and_filter_packet(value _input_file,
+    value _index,
+    value _input_stream,
     value _input_filter, value _pkt)
 {
   int ret_pkt;
   int ret_frame;
+  InputFile *input_file = InputFile_val(_input_file);
+  int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
   InputStream *ist = InputStream_val(_input_stream);
 
   ret_pkt = send_packet(ist->dec_ctx, _pkt);
 
-  ret_frame = receive_and_filter_frame(ist, _input_filter);
+  ret_frame = receive_and_filter_frame(_input_file,
+      _index,
+      _input_stream,
+      _input_filter);
 
   switch (ret_pkt) {
     case 0:
@@ -811,7 +824,7 @@ static int try_to_send_and_filter_packet(value _input_stream,
         default:
           av_log(NULL, AV_LOG_FATAL,
               "Unexpected error while decoding stream #%d:%d: %s\n",
-              0, ist->st->index, av_err2str(ret_frame));
+              0, st->index, av_err2str(ret_frame));
           exit(1);
       }
       break;
@@ -819,7 +832,7 @@ static int try_to_send_and_filter_packet(value _input_stream,
     default:
       av_log(NULL, AV_LOG_FATAL,
           "Unexpected EOF while decoding stream #%d:%d: %s\n",
-          0, ist->st->index, av_err2str(ret_pkt));
+          0, st->index, av_err2str(ret_pkt));
       exit(1);
   }
 
@@ -902,49 +915,47 @@ CAMLprim value get_input_stream_index_from_filter(value _input_file,
 /* prepare and send a packet to a decoder,
  * receive frames from the decoder,
  * and send them through the filters */
-CAMLprim value decode_packet_and_feed_filters(value _input_stream,
+CAMLprim value decode_packet_and_feed_filters(value _input_file,
+    value _index,
+    value _input_stream,
     value _input_filter,
     value _pkt)
 {
-  CAMLparam3(_input_stream,
-      _input_filter, _pkt);
+  CAMLparam5(_input_file, _index,
+    _input_stream, _input_filter, _pkt);
+  CAMLlocal1(ans);
 
   int ret;
+  InputFile *input_file = InputFile_val(_input_file);
+  int index = Int_val(_index);
+  AVStream *st = input_file->ctx->streams[index];
   InputStream *ist =
     InputStream_val(_input_stream);
   AVPacket *pkt = Packet_val(_pkt);
-
-  ist->data_size += pkt->size;
-  ist->nb_packets++;
-
-  if (pkt->pts != AV_NOPTS_VALUE) {
-    ist->max_pts = FFMAX(pkt->pts, ist->max_pts);
-    ist->min_pts = FFMIN(pkt->pts, ist->min_pts);
-  }
 
   // refine next_dts with what the packet contains
   if (pkt->dts == AV_NOPTS_VALUE) {
     pkt->dts =
       av_rescale_q(ist->next_dts,
-          AV_TIME_BASE_Q, ist->st->time_base);
+          AV_TIME_BASE_Q, st->time_base);
   } else {
     ist->next_dts =
       av_rescale_q(pkt->dts,
-          ist->st->time_base, AV_TIME_BASE_Q);
+          st->time_base, AV_TIME_BASE_Q);
   }
-  ist->dts = ist->next_dts;
 
   ist->next_dts += pkt->duration ?
     // use the explicit duration
-    av_rescale_q(pkt->duration, ist->st->time_base, AV_TIME_BASE_Q) :
+    av_rescale_q(pkt->duration, st->time_base, AV_TIME_BASE_Q) :
     // use an aproximation based on the average framerate
     av_rescale_q(1, av_inv_q(ist->dec_ctx->framerate), AV_TIME_BASE_Q);
 
   //av_log(NULL, AV_LOG_ERROR,
-  //    "input packet: dts=%ld(%ld->%ld) ; pts=%ld\n",
-  //    pkt->dts, ist->dts, ist->next_dts, pkt->pts);
+  //    "input packet: dts=%ld(%ld) ; pts=%ld\n",
+  //    pkt->dts, ist->next_dts, pkt->pts);
 
-  while ((ret = try_to_send_and_filter_packet(_input_stream,
+  while ((ret = try_to_send_and_filter_packet(_input_file,
+          _index, _input_stream,
           _input_filter, _pkt)) == AVERROR(EAGAIN)) {
   }
 
@@ -955,11 +966,15 @@ CAMLprim value decode_packet_and_feed_filters(value _input_stream,
     default:
       av_log(NULL, AV_LOG_FATAL,
           "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, ist->st->index, av_err2str(ret));
+          0, st->index, av_err2str(ret));
       exit(1);
   }
 
-  CAMLreturn(Val_unit);
+  ans = caml_alloc_tuple(2);
+  Store_field(ans, 0, caml_copy_int64(pkt->size));
+  Store_field(ans, 1, Val_unit);
+
+  CAMLreturn(ans);
 }
 
 /* flush the decoder and the filter inputs */
@@ -993,7 +1008,9 @@ CAMLprim value flush_input_stream(value _input_file,
       exit(1);
   }
 
-  switch (ret = receive_and_filter_frames(ist,
+  switch (ret = receive_and_filter_frames(_input_file,
+        _index,
+        _input_stream,
         _input_filter)) {
     case AVERROR_EOF:
       break;
