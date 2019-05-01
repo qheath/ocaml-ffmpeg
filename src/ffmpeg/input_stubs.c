@@ -581,20 +581,41 @@ CAMLprim value make_packet_from_file(value _input_file)
   CAMLreturn(ans);
 }
 
+CAMLprim value get_packet_size(value _pkt)
+{
+  CAMLparam1(_pkt);
+  AVPacket *pkt = Packet_val(_pkt);
+
+  CAMLreturn(caml_copy_int64(pkt->size));
+}
+
 
 /***** Input *****/
 
 /* send a packet to a decoder */
-static int send_packet(AVCodecContext *avctx, value _pkt)
+CAMLprim value send_packet(value _input_stream,
+    value _pkt)
 {
-  int ret;
-  AVPacket *pkt = _pkt ? Packet_val(_pkt) : NULL;
+  CAMLparam2(_input_stream, _pkt);
+  CAMLlocal1(ans);
 
-  switch (ret = avcodec_send_packet(avctx, pkt)) {
+  int ret;
+  InputStream *input_stream = InputStream_val(_input_stream);
+  AVPacket *pkt =
+    Is_block(_pkt) ? Packet_val(Field(_pkt, 0)) : NULL;
+
+  switch (ret = avcodec_send_packet(input_stream->dec_ctx,
+        pkt)) {
     case 0:
+      ans = PVV_Ok;
       break;
 
     case AVERROR(EAGAIN):
+      ans = PVV_Again;
+      break;
+
+    case AVERROR_EOF:
+      ans = PVV_End_of_file;
       break;
 
     default:
@@ -604,30 +625,49 @@ static int send_packet(AVCodecContext *avctx, value _pkt)
       exit(1);
   }
 
-  return ret;
+  CAMLreturn(ans);
 }
 
 /* 0: received a frame
  * AVERROR(EAGAIN): needs a packet to be sent for another frame to be received
  * AVERROR_EOF: decoder was already flushed */
-static int receive_frame(AVCodecContext *avctx, AVFrame *frame)
+CAMLprim value receive_frame(value _input_stream)
 {
-    int ret;
+  CAMLparam1(_input_stream);
+  CAMLlocal2(ans, _frame);
 
-    switch (ret = avcodec_receive_frame(avctx, frame)) {
+  int ret;
+  AVFrame *frame;
+  InputStream *input_stream =
+    InputStream_val(_input_stream);
+
+  frame = alloc_frame_value(&_frame);
+
+  switch (ret = avcodec_receive_frame(input_stream->dec_ctx,
+        frame)) {
     case 0:
+      ans = caml_alloc(1, 0);
+      Store_field(ans, 0, _frame);
+      break;
+
     case AVERROR(EAGAIN):
+      ans = caml_alloc(1, 1);
+      Store_field(ans, 0, PVV_Again);
+      break;
+
     case AVERROR_EOF:
-        break;
+      ans = caml_alloc(1, 1);
+      Store_field(ans, 0, PVV_End_of_file);
+      break;
 
     default:
-        av_log(NULL, AV_LOG_FATAL,
-               "Unexpected error while receiving frame: %s.\n",
-               av_err2str(ret));
-        exit(1);
-    }
+      av_log(NULL, AV_LOG_FATAL,
+          "Unexpected error while receiving frame: %s.\n",
+          av_err2str(ret));
+      exit(1);
+  }
 
-    return ret;
+  CAMLreturn(ans);
 }
 
 /* add a frame to the buffer source */
@@ -657,16 +697,20 @@ static void send_frame_to_filters(InputStream *ist,
   send_frame_to_filter(input_filter, frame);
 }
 
-static void filter_frame(value _input_file,
+CAMLprim value filter_frame(value _input_file,
     value _index,
     value _input_stream,
-    value _input_filter, AVFrame *frame)
+    value _input_filter, value _frame)
 {
+  CAMLparam5 (_input_file, _index,
+    _input_stream, _input_filter, _frame);
+
   InputFile *input_file = InputFile_val(_input_file);
   int index = Int_val(_index);
   AVStream *st = input_file->ctx->streams[index];
   InputStream *ist =
     InputStream_val(_input_stream);
+  AVFrame *frame = Frame_val(_frame);
 
   ist->frames_decoded++;
 
@@ -705,138 +749,8 @@ static void filter_frame(value _input_file,
       frame);
 
   av_frame_unref(frame);
-}
 
-/* 0: received and filtered a frame
- * AVERROR(EAGAIN): needs a packet to be sent for another frame to be received
- * AVERROR_EOF: decoder was already flushed */
-static int receive_and_filter_frame(value _input_file,
-    value _index,
-    value _input_stream,
-    value _input_filter)
-{
-  int ret;
-  InputFile *input_file = InputFile_val(_input_file);
-  int index = Int_val(_index);
-  AVStream *st = input_file->ctx->streams[index];
-  InputStream *ist =
-    InputStream_val(_input_stream);
-  AVFrame *frame;
-
-  if (!(frame = av_frame_alloc())) {
-    av_log(NULL, AV_LOG_ERROR,
-        "Error allocating the decoded frame.\n");
-    exit(1);
-  }
-
-  switch (ret = receive_frame(ist->dec_ctx, frame)) {
-    case 0:
-      filter_frame(_input_file,
-          _index,
-          _input_stream,
-          _input_filter,
-          frame);
-
-      break;
-
-    case AVERROR(EAGAIN):
-      break;
-
-    case AVERROR_EOF:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret));
-      exit(1);
-  }
-
-  av_frame_free(&frame);
-
-  return ret;
-}
-
-/* receive frames from the decoder and send them through the filters
- * AVERROR(EAGAIN): decoder needs more packets to produce frames
- * AVERROR_EOF: decoder was flushed */
-static int receive_and_filter_frames(value _input_file,
-    value _index,
-    value _input_stream,
-    value _input_filter)
-{
-  int ret;
-  InputFile *input_file = InputFile_val(_input_file);
-  int index = Int_val(_index);
-  AVStream *st = input_file->ctx->streams[index];
-
-  while (!(ret = receive_and_filter_frame(_input_file,
-          _index,
-          _input_stream,
-          _input_filter))) {
-  }
-
-  switch (ret) {
-    case AVERROR(EAGAIN):
-      break;
-
-    case AVERROR_EOF:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret));
-      exit(1);
-  }
-
-  return ret;
-}
-
-static int try_to_send_and_filter_packet(value _input_file,
-    value _index,
-    value _input_stream,
-    value _input_filter, value _pkt)
-{
-  int ret_pkt;
-  int ret_frame;
-  InputFile *input_file = InputFile_val(_input_file);
-  int index = Int_val(_index);
-  AVStream *st = input_file->ctx->streams[index];
-  InputStream *ist = InputStream_val(_input_stream);
-
-  ret_pkt = send_packet(ist->dec_ctx, _pkt);
-
-  ret_frame = receive_and_filter_frame(_input_file,
-      _index,
-      _input_stream,
-      _input_filter);
-
-  switch (ret_pkt) {
-    case 0:
-      break;
-
-    case AVERROR(EAGAIN):
-      switch (ret_frame) {
-        case 0:
-          break;
-
-        default:
-          av_log(NULL, AV_LOG_FATAL,
-              "Unexpected error while decoding stream #%d:%d: %s\n",
-              0, st->index, av_err2str(ret_frame));
-          exit(1);
-      }
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected EOF while decoding stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret_pkt));
-      exit(1);
-  }
-
-  return ret_pkt;
+  CAMLreturn(Val_unit);
 }
 
 /* flush the buffer source filter */
@@ -912,20 +826,15 @@ CAMLprim value get_input_stream_index_from_filter(value _input_file,
   CAMLreturn(Val_int(input_stream_index));
 }
 
-/* prepare and send a packet to a decoder,
- * receive frames from the decoder,
- * and send them through the filters */
-CAMLprim value decode_packet_and_feed_filters(value _input_file,
+CAMLprim value rescale_input_packet_dts(value _input_file,
     value _index,
     value _input_stream,
-    value _input_filter,
     value _pkt)
 {
-  CAMLparam5(_input_file, _index,
-    _input_stream, _input_filter, _pkt);
+  CAMLparam4(_input_file, _index,
+    _input_stream, _pkt);
   CAMLlocal1(ans);
 
-  int ret;
   InputFile *input_file = InputFile_val(_input_file);
   int index = Int_val(_index);
   AVStream *st = input_file->ctx->streams[index];
@@ -950,31 +859,7 @@ CAMLprim value decode_packet_and_feed_filters(value _input_file,
     // use an aproximation based on the average framerate
     av_rescale_q(1, av_inv_q(ist->dec_ctx->framerate), AV_TIME_BASE_Q);
 
-  //av_log(NULL, AV_LOG_ERROR,
-  //    "input packet: dts=%ld(%ld) ; pts=%ld\n",
-  //    pkt->dts, ist->next_dts, pkt->pts);
-
-  while ((ret = try_to_send_and_filter_packet(_input_file,
-          _index, _input_stream,
-          _input_filter, _pkt)) == AVERROR(EAGAIN)) {
-  }
-
-  switch (ret) {
-    case 0:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error while decoding stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret));
-      exit(1);
-  }
-
-  ans = caml_alloc_tuple(2);
-  Store_field(ans, 0, caml_copy_int64(pkt->size));
-  Store_field(ans, 1, Val_unit);
-
-  CAMLreturn(ans);
+  CAMLreturn(Val_unit);
 }
 
 /* flush the decoder and the filter inputs */
@@ -986,7 +871,6 @@ CAMLprim value flush_input_stream(value _input_file,
   CAMLparam4(_input_file, _index,
       _input_stream, _input_filter);
 
-  int ret;
   int64_t next_pts;
   InputFile *input_file = InputFile_val(_input_file);
   int index = Int_val(_index);
@@ -995,32 +879,6 @@ CAMLprim value flush_input_stream(value _input_file,
   Filter *input_filter = Filter_val(_input_filter);
 
   av_log(NULL, AV_LOG_ERROR, "flush_input_stream\n");
-
-  /* flush the decoder by sending an empty packet */
-  switch (ret = send_packet(ist->dec_ctx, (value)NULL)) {
-    case 0:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error while flushing stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret));
-      exit(1);
-  }
-
-  switch (ret = receive_and_filter_frames(_input_file,
-        _index,
-        _input_stream,
-        _input_filter)) {
-    case AVERROR_EOF:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected missing EOF while decoding stream #%d:%d: %s\n",
-          0, st->index, av_err2str(ret));
-      exit(1);
-  }
 
   /* flush all the filter inputs attached to the stream */
   next_pts =

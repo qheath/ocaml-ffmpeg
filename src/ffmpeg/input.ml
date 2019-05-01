@@ -207,7 +207,64 @@ end = struct
       let filter = stream.filter in
       Some (Avfilter.Input.get_nb_failed_requests filter, filter)
 
-  external decode_packet_and_feed_filters : File.payload -> int -> payload -> Avfilter.Input.t -> Avutil.video Avcodec.Packet.t -> int64 * unit = "decode_packet_and_feed_filters"
+  external send_packet : payload -> Avutil.video Avcodec.Packet.t option -> [`Again|`Ok|`End_of_file] = "send_packet"
+
+  external receive_frame : payload -> (Avutil.video Avutil.frame,[`Again|`End_of_file]) result = "receive_frame"
+  external filter_frame : File.payload -> int -> payload -> Avfilter.Input.t -> Avutil.video Avutil.frame -> unit = "filter_frame"
+  let receive_and_filter_frame file i stream =
+    match receive_frame stream.payload with
+    | Ok frame ->
+      filter_frame
+        file.File.payload i
+        stream.payload stream.filter
+        frame ;
+      `Ok
+    | Error `Again -> `Again
+    | Error `End_of_file -> `End_of_file
+
+  let receive_and_filter_frames file i stream =
+    let rec aux () =
+      match receive_and_filter_frame file i stream with
+      | `Ok -> aux ()
+      | `Again -> `Again
+      | `End_of_file -> `End_of_file
+    in
+    aux ()
+
+  external get_packet_size : Avutil.video Avcodec.Packet.t -> int64 = "get_packet_size"
+  external rescale_input_packet_dts : File.payload -> int -> payload -> Avutil.video Avcodec.Packet.t -> unit = "rescale_input_packet_dts"
+
+  let filter_packet file stream_index stream packet =
+    let rec aux () =
+      match
+        send_packet
+          stream.payload
+          (Some packet)
+      with
+      | `Again ->
+        begin match
+            receive_and_filter_frame
+              file
+              stream_index
+              stream
+          with
+          | `Ok -> aux ()
+          | `Again | `End_of_file -> assert false
+        end
+      | `Ok ->
+        begin match
+            receive_and_filter_frame
+              file
+              stream_index
+              stream
+          with
+          | `Ok | `Again -> ()
+          | `End_of_file -> assert false
+        end
+      | `End_of_file -> assert false
+    in
+    aux ()
+
   let decode_packet_and_feed_filters file packet =
     let streams = file.File.streams in
     let stream_index =
@@ -219,11 +276,16 @@ end = struct
       | None -> ()
       | Some stream ->
         let pkt_size,() =
-          decode_packet_and_feed_filters
+          rescale_input_packet_dts
             file.File.payload stream_index
             stream.payload
-            stream.filter
-            packet
+            packet ;
+          filter_packet
+            file
+            stream_index
+            stream
+            packet ;
+          get_packet_size packet,()
         in
         streams.(stream_index) <-
           Some { stream with
@@ -235,10 +297,18 @@ end = struct
 
   external flush_input_stream : File.payload -> int -> payload -> Avfilter.Input.t -> unit = "flush_input_stream"
   let flush_input_stream file i stream =
-    flush_input_stream
-      file.File.payload i
-      stream.payload
-      stream.filter
+    match send_packet stream.payload None with
+    | `Ok ->
+      begin
+        match receive_and_filter_frames file i stream with
+        | `Again -> assert false
+        | `End_of_file ->
+          flush_input_stream
+            file.File.payload i
+            stream.payload
+            stream.filter
+      end
+    | _ -> assert false
 
   let flush_input_file file =
     iteri (flush_input_stream file) file ;
