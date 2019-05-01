@@ -19,11 +19,11 @@ module Graph = struct
   let request_oldest (_,filters,_) =
     request_oldest filters
 
-  let iter_inputs f (inputs,filters,_) =
-    Array.iter (f filters) inputs
+  let iteri_inputs f (inputs,filters,_) =
+    Array.iteri (f filters) inputs
 
-  let map_outputs f (_,filters,outputs) =
-    Array.map (f filters) outputs
+  let mapi_outputs f (_,filters,outputs) =
+    Array.mapi (f filters) outputs
 
   let init filter_graph =
     config filter_graph ;

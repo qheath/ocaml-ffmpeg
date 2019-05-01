@@ -13,9 +13,9 @@ module Graph : sig
 
   val request_oldest : t -> [`Again|`Ok|`End_of_file]
 
-  val iter_inputs : (filters -> input -> unit) -> t -> unit
+  val iteri_inputs : (filters -> int -> input -> unit) -> t -> unit
 
-  val map_outputs : (filters -> output -> 'a) -> t -> 'a array
+  val mapi_outputs : (filters -> int -> output -> 'a) -> t -> 'a array
 
   val init : t -> t
 
