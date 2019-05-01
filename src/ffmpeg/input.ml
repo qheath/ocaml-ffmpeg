@@ -15,9 +15,7 @@ module File : sig
 
   val iteri : (int -> 'a -> unit) -> 'a t -> unit
 
-  (*
   val mapi : (int -> 'a -> 'b) -> 'a t -> 'b t
-   *)
 
   val fold : ('a -> 'accum -> 'accum) -> 'a t -> 'accum -> 'accum
 
@@ -63,12 +61,10 @@ end = struct
   let iteri f file =
     Array.iteri f file.streams
 
-  (*
   let mapi f file =
     { file with
       streams = Array.mapi f file.streams ;
     }
-   *)
 
   let fold f file seed =
     Array.fold_left
@@ -83,8 +79,9 @@ module Stream : sig
   type t = {
     payload    : payload ;
     filter     : Avfilter.Input.t ;
-    data_size  : int64 ;
     nb_packets : int64 ;
+    data_size  : int64 ;
+    nb_frames  : int64 ;
   }
 
   val open_source_streams : Avfilter.Graph.t -> t option File.t -> Avfilter.Graph.t * t option File.t
@@ -93,16 +90,26 @@ module Stream : sig
 
   val seed_filters : t option File.t -> t option File.t
 
+  val iteri : (int -> t -> unit) -> t option File.t -> unit
+
+  (*
+  val mapi : (int -> 'a -> 'b) -> 'a option File.t -> 'b option File.t
+   *)
+
+  val fold : (t -> 'accum -> 'accum) -> t option File.t -> 'accum -> 'accum
+
 end = struct
 
   type payload
   type t = {
     payload    : payload ;
     filter     : Avfilter.Input.t ;
-    data_size  : int64 ;
-    (* combined size of all the packets read *)
     nb_packets : int64 ;
     (* number of packets successfully read for this stream *)
+    data_size  : int64 ;
+    (* combined size of all the packets read *)
+    nb_frames  : int64 ;
+    (* number of frames sent to the filter graph *)
   }
 
   let iteri f file =
@@ -112,14 +119,12 @@ end = struct
         | Some stream -> f i stream)
       file
 
-  (*
   let mapi f file =
     File.mapi
       (fun i x -> match x with
         | None -> None
         | Some stream -> Some (f i stream))
       file
-   *)
 
   let fold f file seed =
     File.fold
@@ -146,8 +151,9 @@ end = struct
     {
       payload ;
       filter ;
-      data_size = 0L ;
       nb_packets = 0L ;
+      data_size = 0L ;
+      nb_frames = 0L ;
     }
 
   external get_input_stream_index_from_filter : File.payload -> Avfilter.Graph.input -> int = "get_input_stream_index_from_filter"
@@ -162,7 +168,7 @@ end = struct
     streams.(stream_index) <-
       f stream_index streams.(stream_index)
 
-  let open_source_stream file filters in_filter =
+  let open_source_stream file filters _i in_filter =
     let aux index = function
       | Some _ -> failwith "Input stream used twice"
       | None ->
@@ -182,7 +188,7 @@ end = struct
       file in_filter
 
   let open_source_streams filter_graph file =
-    Avfilter.Graph.iter_inputs
+    Avfilter.Graph.iteri_inputs
       (open_source_stream file) filter_graph ;
     filter_graph,file
 
@@ -214,28 +220,32 @@ end = struct
   let receive_and_filter_frame file i stream =
     match receive_frame stream.payload with
     | Ok frame ->
+      let stream =
+        { stream with
+          nb_frames = Int64.succ stream.nb_frames ;
+        }
+      in
       filter_frame
         file.File.payload i
         stream.payload stream.filter
         frame ;
-      `Ok
-    | Error `Again -> `Again
-    | Error `End_of_file -> `End_of_file
+      `Ok,stream
+    | Error `Again -> `Again,stream
+    | Error `End_of_file -> `End_of_file,stream
 
   let receive_and_filter_frames file i stream =
-    let rec aux () =
+    let rec aux stream =
       match receive_and_filter_frame file i stream with
-      | `Ok -> aux ()
-      | `Again -> `Again
-      | `End_of_file -> `End_of_file
+      | `Ok,stream -> aux stream
+      | `Again,stream -> `Again,stream
+      | `End_of_file,stream -> `End_of_file,stream
     in
-    aux ()
+    aux stream
 
-  external get_packet_size : Avutil.video Avcodec.Packet.t -> int64 = "get_packet_size"
   external rescale_input_packet_dts : File.payload -> int -> payload -> Avutil.video Avcodec.Packet.t -> unit = "rescale_input_packet_dts"
 
   let filter_packet file stream_index stream packet =
-    let rec aux () =
+    let rec aux stream =
       match
         send_packet
           stream.payload
@@ -248,8 +258,9 @@ end = struct
               stream_index
               stream
           with
-          | `Ok -> aux ()
-          | `Again | `End_of_file -> assert false
+          | `Ok,stream ->
+            aux stream
+          | `Again,_ | `End_of_file,_ -> assert false
         end
       | `Ok ->
         begin match
@@ -258,12 +269,14 @@ end = struct
               stream_index
               stream
           with
-          | `Ok | `Again -> ()
-          | `End_of_file -> assert false
+          | `Ok,stream ->
+            stream
+          | `Again,stream -> stream
+          | `End_of_file,_ -> assert false
         end
       | `End_of_file -> assert false
     in
-    aux ()
+    aux stream
 
   let decode_packet_and_feed_filters file packet =
     let streams = file.File.streams in
@@ -275,22 +288,22 @@ end = struct
       match streams.(stream_index) with
       | None -> ()
       | Some stream ->
-        let pkt_size,() =
-          rescale_input_packet_dts
-            file.File.payload stream_index
-            stream.payload
-            packet ;
+        let pkt_size = Avcodec.Packet.get_size packet in
+        rescale_input_packet_dts
+          file.File.payload stream_index
+          stream.payload
+          packet ;
+        let stream =
           filter_packet
             file
             stream_index
             stream
-            packet ;
-          get_packet_size packet,()
+            packet
         in
         streams.(stream_index) <-
           Some { stream with
                  data_size =
-                   Int64.add stream.data_size pkt_size ;
+                   Int64.(add stream.data_size @@ of_int pkt_size) ;
                  nb_packets =
                    Int64.succ stream.nb_packets ;
                }
@@ -301,17 +314,20 @@ end = struct
     | `Ok ->
       begin
         match receive_and_filter_frames file i stream with
-        | `Again -> assert false
-        | `End_of_file ->
+        | `Again,_ -> assert false
+        | `End_of_file,stream ->
           flush_input_stream
             file.File.payload i
             stream.payload
-            stream.filter
+            stream.filter ;
+          stream
       end
     | _ -> assert false
 
   let flush_input_file file =
-    iteri (flush_input_stream file) file ;
+    let file =
+      mapi (flush_input_stream file) file
+    in
     { file with
       File.eof = true ;
     }
@@ -359,34 +375,29 @@ let init file =
   File.init_thread file ;
   Stream.dump_mappings file
 
-let print_input_stream_stats stream i =
+let print_data_line header index name (nb_packets,data_size,nb_frames) =
   Format.printf
-    "  Input stream #%d (?): %Ld packets read (%Ld bytes); ? frames decoded; \n"
-    i
-    stream.Stream.nb_packets
-    stream.Stream.data_size ;
+    "%s #%d (%s): %Ld packets read (%Ld bytes); %Ld frames decoded; \n"
+    header index name
+    nb_packets data_size nb_frames
 
-external print_input_file_stats : File.payload -> Stream.payload option array -> unit = "print_input_file_stats"
+let print_input_stream_stats stream index =
+  print_data_line
+    "  Input stream"
+    index
+    "?"
+    (stream.Stream.nb_packets,
+     stream.Stream.data_size,
+     stream.Stream.nb_frames)
+
 let print_file_stats input_file =
-  Format.printf "Input file #%d (?):\n" 0 ;
-  print_input_file_stats
-    input_file.File.payload
-    (Array.mapi
-       (fun i -> function
-         | None -> None
-         | Some stream ->
-           print_input_stream_stats stream i ;
-           Some stream.Stream.payload)
-       input_file.File.streams) ;
-  let total_size,total_packets =
-    Array.fold_left
-      (fun (accum_size,accum_packets) -> function
-         | None -> accum_size,accum_packets
-         | Some stream ->
-           Int64.add accum_size stream.Stream.data_size,
-           Int64.add accum_packets stream.Stream.nb_packets)
-      (0L,0L) input_file.File.streams
-  in
-  Format.printf
-    "  Total: %Ld packets (%Ld bytes) demuxed\n"
-      total_packets total_size
+  (0L,0L,0L) |> Stream.fold
+    (fun stream (accum_nb_packets,accum_data_size,accum_nb_frames) ->
+       Int64.add accum_nb_packets stream.Stream.nb_packets,
+       Int64.add accum_data_size stream.Stream.data_size,
+       Int64.add accum_nb_frames stream.Stream.nb_frames)
+    input_file
+  |> (print_data_line "Input file" (-1) "?") ;
+  Stream.iteri
+    (fun i stream -> print_input_stream_stats stream i)
+    input_file

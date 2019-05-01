@@ -23,10 +23,6 @@ typedef struct InputStream {
   int64_t next_dts;
 
   int64_t next_pts;  ///< synthetic pts for the next decode frame (in AV_TIME_BASE units)
-
-  /* stats */
-  // number of frames/samples retrieved from the decoder
-  uint64_t frames_decoded;
 } InputStream;
 
 #define InputStream_val(v) (*(InputStream**)Data_custom_val(v))

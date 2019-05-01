@@ -79,6 +79,7 @@ AVFormatContext * setup_input_context(AVDictionary *format_options,
     const char *ifilename)
 {
   int ret;
+  int i;
   AVFormatContext *ctx;
 
   if (!(ctx = avformat_alloc_context())) {
@@ -104,6 +105,11 @@ AVFormatContext * setup_input_context(AVDictionary *format_options,
    * decode the first frames to get it. (used in mpeg
    * case for example) */
   avformat_find_stream_info(ctx, NULL);
+
+  for (i=0; i<ctx->nb_streams; i++) {
+    /* print detailed information about the input format */
+    av_dump_format(ctx, i, ctx->url, 0);
+  }
 
   return ctx;
 }
@@ -393,8 +399,6 @@ CAMLprim value make_input_stream(value _input_file,
 
   input_stream->next_pts        = 0l;
 
-  input_stream->frames_decoded  = 0l;
-
   CAMLreturn(_input_stream);
 }
 
@@ -485,65 +489,6 @@ CAMLprim value init_input_filter(value _input_file,
 
 /***** Print *****/
 
-static void print_input_stream_stats(value _input_stream,
-    int index)
-{
-  InputStream *input_stream =
-    InputStream_val(_input_stream);
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "  Input stream #%d:%d (%s): %"PRIu64" frames decoded; \n",
-      0, index,
-      av_get_media_type_string(input_stream->dec_ctx->codec_type),
-      input_stream->frames_decoded);
-}
-
-CAMLprim value print_input_file_stats(value _input_file,
-    value _input_streams)
-{
-  CAMLparam2(_input_file, _input_streams);
-  CAMLlocal1(_input_stream_opt);
-
-  InputFile *input_file =
-    InputFile_val(_input_file);
-  int nb_input_streams =
-    Wosize_val(_input_streams);
-  int i;
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "Input file #%d (%s):\n",
-      0, input_file->ctx->url);
-
-  for (i = 0; i < nb_input_streams; i++) {
-    _input_stream_opt = Field(_input_streams, i);
-    if (Is_block(_input_stream_opt)) {
-      print_input_stream_stats(Field(_input_stream_opt, 0),
-          i);
-    }
-  }
-
-  CAMLreturn(Val_unit);
-}
-
-//CAMLprim value dump_input_file(value _format_options,
-//    value _input_file)
-//{
-//  CAMLparam2(_format_options, _input_file);
-//  CAMLlocal1(pair);
-//
-//  int i;
-//  InputFile *input_file =
-//    InputFile_val(_input_file);
-//  AVFormatContext *ic = input_file->ctx;
-//
-//  for (i=0; i<ic->nb_streams; i++) {
-//    /* print detailed information about the input format */
-//    av_dump_format(ic, i, ic->url, 0);
-//  }
-//
-//  CAMLreturn(Val_unit);
-//}
-
 
 /***** Packet *****/
 
@@ -579,14 +524,6 @@ CAMLprim value make_packet_from_file(value _input_file)
   }
 
   CAMLreturn(ans);
-}
-
-CAMLprim value get_packet_size(value _pkt)
-{
-  CAMLparam1(_pkt);
-  AVPacket *pkt = Packet_val(_pkt);
-
-  CAMLreturn(caml_copy_int64(pkt->size));
 }
 
 
@@ -711,8 +648,6 @@ CAMLprim value filter_frame(value _input_file,
   InputStream *ist =
     InputStream_val(_input_stream);
   AVFrame *frame = Frame_val(_frame);
-
-  ist->frames_decoded++;
 
   frame->pts =
     frame->best_effort_timestamp;
