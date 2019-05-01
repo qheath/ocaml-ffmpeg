@@ -169,16 +169,6 @@ CAMLprim value open_muxer(value _muxer_options,
 
 /***** Output stream *****/
 
-CAMLprim value index_of_output_stream(value _output_stream)
-{
-  CAMLparam1(_output_stream);
-
-  OutputStream *output_stream =
-    OutputStream_val(_output_stream);
-
-  CAMLreturn(output_stream->st->index);
-}
-
 CAMLprim value name_of_output_stream(value _output_stream)
 {
   CAMLparam1(_output_stream);
@@ -246,75 +236,76 @@ static AVCodec *get_encoder(void)
   return codec;
 }
 
-static void set_encoder(OutputStream *ost, AVCodec *codec)
+static void set_encoder(AVStream *st, AVCodec *codec)
 {
   av_log(NULL, AV_LOG_VERBOSE,
       "Matched encoder '%s'.\n", codec->name);
-  if (codec->type != ost->st->codecpar->codec_type) {
+  if (codec->type != st->codecpar->codec_type) {
     av_log(NULL, AV_LOG_FATAL,
         "Invalid encoder type.\n");
     exit(1);
   }
 
-  ost->st->codecpar->codec_id = codec->id;
+  st->codecpar->codec_id = codec->id;
 }
 
 /* Create an output stream, optionaly linked to an input stream. */
-static OutputStream *new_output_stream(OutputFile *output_file,
-    value _flags, value *pstream)
+static void setup_output_stream(OutputFile *output_file,
+    OutputStream *output_stream,
+    const char *flags)
 {
   AVFormatContext *oc = output_file->ctx;
   AVCodec *codec = get_encoder();
-  OutputStream *ost = alloc_output_stream(pstream);
+  AVStream *st;
 
-  if (!(ost->st = avformat_new_stream(oc, codec))) {
+  if (!(st = avformat_new_stream(oc, codec))) {
     av_log(NULL, AV_LOG_FATAL, "Could not alloc stream.\n");
     exit(1);
   }
-  ost->st->index                = oc->nb_streams - 1;
-  ost->st->sample_aspect_ratio  = (AVRational){1, 1};
-  ost->st->disposition          = AV_DISPOSITION_DEFAULT;
-  ost->st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-  ost->st->avg_frame_rate       = (AVRational){30000, 1001};
+  st->index                = oc->nb_streams - 1;
+  st->sample_aspect_ratio  = (AVRational){1, 1};
+  st->disposition          = AV_DISPOSITION_DEFAULT;
+  st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+  st->avg_frame_rate       = (AVRational){30000, 1001};
 
-  set_encoder(ost, codec);
+  set_encoder(st, codec);
 
-  if (!(ost->enc_ctx =
+  if (!(output_stream->enc_ctx =
         avcodec_alloc_context3(codec))) {
     av_log(NULL, AV_LOG_ERROR,
         "Error allocating the encoding context.\n");
     exit(1);
   }
-  //if ((ret = avcodec_parameters_to_context(ost->enc_ctx, ost->st->codecpar)) < 0) {
+  //if ((ret = avcodec_parameters_to_context(output_stream->enc_ctx, st->codecpar)) < 0) {
   //    av_log(NULL, AV_LOG_ERROR, "Error initializing the encoder context.\n");
   //    exit(1);
   //}
-  ost->enc_ctx->rc_override_count      = 0;
-  ost->enc_ctx->bits_per_raw_sample    = 0;
-  ost->enc_ctx->chroma_sample_location = AVCHROMA_LOC_UNSPECIFIED;
-  ost->enc_ctx->flags                 |= AV_CODEC_FLAG_GLOBAL_HEADER;
-  ost->enc_ctx->sample_aspect_ratio    = ost->st->sample_aspect_ratio;
-  ost->enc_ctx->pix_fmt                = AV_PIX_FMT_YUV420P;
-  ost->enc_ctx->time_base              = av_inv_q(ost->st->avg_frame_rate);
-  ost->enc_ctx->framerate              = ost->st->avg_frame_rate;
+  output_stream->enc_ctx->rc_override_count      = 0;
+  output_stream->enc_ctx->bits_per_raw_sample    = 0;
+  output_stream->enc_ctx->chroma_sample_location = AVCHROMA_LOC_UNSPECIFIED;
+  output_stream->enc_ctx->flags                 |= AV_CODEC_FLAG_GLOBAL_HEADER;
+  output_stream->enc_ctx->sample_aspect_ratio    = st->sample_aspect_ratio;
+  output_stream->enc_ctx->pix_fmt                = AV_PIX_FMT_YUV420P;
+  output_stream->enc_ctx->time_base              = av_inv_q(st->avg_frame_rate);
+  output_stream->enc_ctx->framerate              = st->avg_frame_rate;
 
   {
     uint8_t *encoder_string;
     int encoder_string_len;
-    int codec_flags = ost->enc_ctx->flags;
+    int codec_flags = output_stream->enc_ctx->flags;
 
-    if (!av_dict_get(ost->st->metadata, "encoder",  NULL, 0)) {
-      const AVOption *o = av_opt_find(ost->enc_ctx,
+    if (!av_dict_get(st->metadata, "encoder",  NULL, 0)) {
+      const AVOption *o = av_opt_find(output_stream->enc_ctx,
           "flags", NULL, 0, 0);
       // XXX
       if (!o)
         exit(1);
-      if (Is_block(_flags)) {
-        av_opt_eval_flags(ost->enc_ctx,
-            o, String_val(Field(_flags, 0)), &codec_flags);
+      if (flags) {
+        av_opt_eval_flags(output_stream->enc_ctx,
+            o, flags, &codec_flags);
       }
 
-      encoder_string_len = sizeof(LIBAVCODEC_IDENT) + strlen(ost->enc_ctx->codec->name) + 2;
+      encoder_string_len = sizeof(LIBAVCODEC_IDENT) + strlen(output_stream->enc_ctx->codec->name) + 2;
       encoder_string     = av_mallocz(encoder_string_len);
       if (!encoder_string)
         exit(1);
@@ -323,15 +314,13 @@ static OutputStream *new_output_stream(OutputFile *output_file,
         av_strlcpy(encoder_string, LIBAVCODEC_IDENT " ", encoder_string_len);
       else
         av_strlcpy(encoder_string, "Lavc ", encoder_string_len);
-      av_strlcat(encoder_string, ost->enc_ctx->codec->name, encoder_string_len);
-      av_dict_set(&ost->st->metadata, "encoder",  encoder_string,
+      av_strlcat(encoder_string, output_stream->enc_ctx->codec->name, encoder_string_len);
+      av_dict_set(&st->metadata, "encoder",  encoder_string,
           AV_DICT_DONT_STRDUP_VAL | AV_DICT_DONT_OVERWRITE);
     }
   }
 
-  ost->last_mux_dts = AV_NOPTS_VALUE;
-
-  return ost;
+  output_stream->last_mux_dts = AV_NOPTS_VALUE;
 }
 
 /* set up the OutputStream */
@@ -344,9 +333,12 @@ CAMLprim value make_output_stream(value _output_file,
   OutputFile *output_file =
     OutputFile_val(_output_file);
   OutputStream *output_stream;
+  const char *flags =
+    Is_block(_flags) ?  String_val(Field(_flags, 0)) : NULL;
 
-  output_stream =
-    new_output_stream(output_file, _flags, &_stream);
+  output_stream = alloc_output_stream(&_stream);
+  setup_output_stream(output_file,
+      output_stream, flags);
 
   CAMLreturn(_stream);
 }
@@ -354,9 +346,13 @@ CAMLprim value make_output_stream(value _output_file,
 /* set up the Filter */
 CAMLprim value init_output_filter(value _filter_graph,
     value _out_filter,
+    value _output_file,
+    value _stream_index,
     value _output_stream)
 {
-  CAMLparam3(_filter_graph, _out_filter,
+  CAMLparam5(_filter_graph, _out_filter,
+      _output_file,
+      _stream_index,
       _output_stream);
   CAMLlocal1(_output_filter);
 
@@ -370,6 +366,10 @@ CAMLprim value init_output_filter(value _filter_graph,
   AVFilterContext *out_filter_ctx =
     out->filter_ctx, *in_filter_ctx;
   int pad_idx = out->pad_idx;
+  OutputFile *output_file =
+    OutputFile_val(_output_file);
+  int stream_index = Int_val(_stream_index);
+  AVStream *st = output_file->ctx->streams[stream_index];
   OutputStream *output_stream =
     OutputStream_val(_output_stream);
 
@@ -387,7 +387,7 @@ CAMLprim value init_output_filter(value _filter_graph,
 
   {
     snprintf(name, sizeof(name), "format :%d",
-        output_stream->st->index);
+        st->index);
 
     if (!(in_filter_ctx =
           avfilter_graph_alloc_filter(filter_graph,
@@ -416,7 +416,7 @@ CAMLprim value init_output_filter(value _filter_graph,
 
   {
     snprintf(name, sizeof(name), "output stream :%d",
-        output_stream->st->index);
+        st->index);
 
     if (!(in_filter_ctx =
           avfilter_graph_alloc_filter(filter_graph,
@@ -479,27 +479,33 @@ static int init_output_stream(AVStream *st,
         (AVRational){0, 1});
   else
     av_log(NULL, AV_LOG_ERROR,
-        "os->st->timebase = %d/%d, should it be set?\n",
+        "st->timebase = %d/%d, should it be set?\n",
         st->time_base.num, st->time_base.den);
 
   // XXX know the uniduration and use it as a hint for the muxer
   //st->duration =
-  //  av_rescale_q(ist->st->duration,
-  //      ist->st->time_base, st->time_base);
+  //  av_rescale_q(st->duration, st->time_base, st->time_base);
 
   return ret;
 }
 
-CAMLprim value open_output_stream(value _output_stream,
+CAMLprim value open_output_stream(value _output_file,
+    value _stream_index,
+    value _output_stream,
     value _codec_options,
     value _output_filter)
 {
-  CAMLparam3(_output_stream, _codec_options, _output_filter);
+  CAMLparam5(_output_file, _stream_index,
+    _output_stream, _codec_options, _output_filter);
   CAMLlocal1(pair);
 
   int i, ret;
   int nb_codec_options = Wosize_val(_codec_options);
   AVDictionary *codec_options = NULL;
+  OutputFile *output_file =
+    OutputFile_val(_output_file);
+  int stream_index = Int_val(_stream_index);
+  AVStream *st = output_file->ctx->streams[stream_index];
   OutputStream *output_stream =
     OutputStream_val(_output_stream);
   Filter *output_filter =
@@ -531,7 +537,7 @@ CAMLprim value open_output_stream(value _output_stream,
   assert_empty_avoptions(codec_options);
   av_dict_free(&codec_options);
 
-  if ((ret = init_output_stream(output_stream->st,
+  if ((ret = init_output_stream(st,
           output_stream->enc_ctx)) < 0) {
     av_log(NULL, AV_LOG_ERROR,
         "Error while opening encoder for output stream #%d - "
@@ -576,34 +582,78 @@ CAMLprim value dump_output_file(value _output_file)
   CAMLreturn(Val_unit);
 }
 
-static void print_output_stream_stats(value _output_stream,
-    int index,
-    uint64_t *ptotal_packets,
-    uint64_t *pvideo_size,
-    uint64_t *pextra_size)
-{
-  OutputStream *output_stream =
-    OutputStream_val(_output_stream);
-
-  enum AVMediaType type = output_stream->enc_ctx->codec_type;
-
-  *ptotal_packets += output_stream->packets_written;
-  *pvideo_size    += output_stream->data_size;
-  *pextra_size    += output_stream->enc_ctx->extradata_size;
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "  Output stream #%d:%d (%s): %"PRIu64" frames encoded; %"PRIu64" packets muxed (%"PRIu64" bytes); \n",
-      0, index,
-      av_get_media_type_string(type),
-      output_stream->frames_encoded,
-      output_stream->packets_written,
-      output_stream->data_size);
-}
-
 // XXX
 static double psnr(double d)
 {
     return -10.0 * log10(d);
+}
+
+static void print_stream_report(OutputFile *output_file,
+    int stream_index,
+    OutputStream *output_streams,
+    int *pvid, AVBPrint *pbuf, AVBPrint *pbuf_script, int t, int is_last_report, int64_t *ppts, int nb_frames)
+{
+  AVStream *st = output_file->ctx->streams[stream_index];
+  float q = -1;
+  AVCodecContext *enc = output_streams->enc_ctx;
+
+  if (enc->codec_type != AVMEDIA_TYPE_VIDEO)
+    return;
+
+  q = output_streams->quality / (float) FF_QP2LAMBDA;
+
+  if (*pvid) {
+    av_bprintf(pbuf, "q=%2.1f ", q);
+    av_bprintf(pbuf_script, "stream_%d_q=%.1f\n",
+        st->index, q);
+  } else {
+    float fps;
+
+    fps = t > 1 ? nb_frames / t : 0;
+    av_bprintf(pbuf, "frame=%5d fps=%3.*f q=%3.1f ",
+        nb_frames, fps < 9.95, fps, q);
+    av_bprintf(pbuf_script, "frame=%d\n", nb_frames);
+    av_bprintf(pbuf_script, "fps=%.2f\n", fps);
+    av_bprintf(pbuf_script, "stream_%d_q=%.1f\n",
+        st->index, q);
+    if (is_last_report)
+      av_bprintf(pbuf, "L");
+
+    if ((enc->flags & AV_CODEC_FLAG_PSNR) && (output_streams->pict_type != AV_PICTURE_TYPE_NONE || is_last_report)) {
+      int j;
+      double error, error_sum = 0;
+      double scale, scale_sum = 0;
+      double p;
+      char type[3] = { 'Y','U','V' };
+      av_bprintf(pbuf, "PSNR=");
+      for (j = 0; j < 3; j++) {
+        if (is_last_report) {
+          error = enc->error[j];
+          scale = enc->width * enc->height * 255.0 * 255.0 * nb_frames;
+        } else {
+          error = output_streams->error[j];
+          scale = enc->width * enc->height * 255.0 * 255.0;
+        }
+        if (j)
+          scale /= 4;
+        error_sum += error;
+        scale_sum += scale;
+        p = psnr(error / scale);
+        av_bprintf(pbuf, "%c:%2.2f ", type[j], p);
+        av_bprintf(pbuf_script, "stream_%d_psnr_%c=%2.2f\n",
+            st->index, type[j] | 32, p);
+      }
+      p = psnr(error_sum / scale_sum);
+      av_bprintf(pbuf, "*:%2.2f ", psnr(error_sum / scale_sum));
+      av_bprintf(pbuf_script, "stream_%d_psnr_all=%2.2f\n",
+          st->index, p);
+    }
+    *pvid = 1;
+  }
+  /* compute min output value */
+  if (av_stream_get_end_pts(st) != AV_NOPTS_VALUE)
+    ppts = FFMAX(ppts, av_rescale_q(av_stream_get_end_pts(st),
+          st->time_base, AV_TIME_BASE_Q));
 }
 
 CAMLprim value print_report(value _is_last_report,
@@ -611,13 +661,13 @@ CAMLprim value print_report(value _is_last_report,
 {
   CAMLparam3(_is_last_report,
       _output_file, _output_streams);
+  CAMLlocal1(_output_stream);
 
   int is_last_report = Bool_val(_is_last_report);
   AVBPrint buf, buf_script;
   AVFormatContext *oc;
   int64_t total_size;
-  AVCodecContext *enc;
-  int frame_number, vid, i;
+  int vid, i;
   double bitrate;
   double speed;
   int64_t pts = INT64_MIN + 1;
@@ -653,69 +703,11 @@ CAMLprim value print_report(value _is_last_report,
   av_bprint_init(&buf, 0, AV_BPRINT_SIZE_AUTOMATIC);
   av_bprint_init(&buf_script, 0, AV_BPRINT_SIZE_AUTOMATIC);
   for (i = 0; i < nb_output_streams; i++) {
-    OutputStream *output_streams =
-      OutputStream_val(Field(_output_streams, i));
-    float q = -1;
-    enc = output_streams->enc_ctx;
-
-    if (enc->codec_type != AVMEDIA_TYPE_VIDEO)
-      continue;
-
-    q = output_streams->quality / (float) FF_QP2LAMBDA;
-
-    if (vid) {
-      av_bprintf(&buf, "q=%2.1f ", q);
-      av_bprintf(&buf_script, "stream_%d_q=%.1f\n",
-          output_streams->st->index, q);
-    } else {
-      float fps;
-
-      frame_number = output_streams->frames_encoded;
-      fps = t > 1 ? frame_number / t : 0;
-      av_bprintf(&buf, "frame=%5d fps=%3.*f q=%3.1f ",
-          frame_number, fps < 9.95, fps, q);
-      av_bprintf(&buf_script, "frame=%d\n", frame_number);
-      av_bprintf(&buf_script, "fps=%.2f\n", fps);
-      av_bprintf(&buf_script, "stream_%d_q=%.1f\n",
-          output_streams->st->index, q);
-      if (is_last_report)
-        av_bprintf(&buf, "L");
-
-      if ((enc->flags & AV_CODEC_FLAG_PSNR) && (output_streams->pict_type != AV_PICTURE_TYPE_NONE || is_last_report)) {
-        int j;
-        double error, error_sum = 0;
-        double scale, scale_sum = 0;
-        double p;
-        char type[3] = { 'Y','U','V' };
-        av_bprintf(&buf, "PSNR=");
-        for (j = 0; j < 3; j++) {
-          if (is_last_report) {
-            error = enc->error[j];
-            scale = enc->width * enc->height * 255.0 * 255.0 * frame_number;
-          } else {
-            error = output_streams->error[j];
-            scale = enc->width * enc->height * 255.0 * 255.0;
-          }
-          if (j)
-            scale /= 4;
-          error_sum += error;
-          scale_sum += scale;
-          p = psnr(error / scale);
-          av_bprintf(&buf, "%c:%2.2f ", type[j], p);
-          av_bprintf(&buf_script, "stream_%d_psnr_%c=%2.2f\n",
-              output_streams->st->index, type[j] | 32, p);
-        }
-        p = psnr(error_sum / scale_sum);
-        av_bprintf(&buf, "*:%2.2f ", psnr(error_sum / scale_sum));
-        av_bprintf(&buf_script, "stream_%d_psnr_all=%2.2f\n",
-            output_streams->st->index, p);
-      }
-      vid = 1;
-    }
-    /* compute min output value */
-    if (av_stream_get_end_pts(output_streams->st) != AV_NOPTS_VALUE)
-      pts = FFMAX(pts, av_rescale_q(av_stream_get_end_pts(output_streams->st),
-            output_streams->st->time_base, AV_TIME_BASE_Q));
+    _output_stream = Field(_output_streams, i);
+    print_stream_report(output_file, i,
+        OutputStream_val(Field(_output_stream, 0)),
+        &vid, &buf, &buf_script, t, is_last_report, &pts,
+        Int_val(Field(_output_stream, 1)));
   }
 
   secs = FFABS(pts) / AV_TIME_BASE;
@@ -781,51 +773,6 @@ CAMLprim value print_report(value _is_last_report,
   CAMLreturn(caml_copy_int64(total_size));
 }
 
-CAMLprim value print_output_file_stats(value _output_file,
-    value _output_streams)
-{
-  CAMLparam2(_output_file, _output_streams);
-
-  OutputFile *output_file =
-    OutputFile_val(_output_file);
-  int nb_output_streams =
-    Wosize_val(_output_streams);
-  int i;
-  uint64_t total_packets = 0;
-  uint64_t video_size = 0;
-  uint64_t extra_size = 0;
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "Output file #%d (%s):\n",
-      0, output_file->ctx->url);
-
-  for (i = 0; i < nb_output_streams; i++) {
-    print_output_stream_stats(Field(_output_streams, i),
-        i,
-        &total_packets, &video_size, &extra_size);
-  }
-
-  av_log(NULL, AV_LOG_VERBOSE,
-      "  Total: %"PRIu64" packets muxed\n",
-      total_packets);
-
-  if (!video_size) {
-    av_log(NULL, AV_LOG_WARNING,
-        "No video data was encoded.\n");
-  }
-
-  if (!extra_size) {
-    av_log(NULL, AV_LOG_WARNING,
-        "No extra data was encoded.\n");
-  }
-
-  av_log(NULL, AV_LOG_INFO,
-      "video:%1.0fkB global headers:%1.0fkB\n",
-      video_size / 1024.0,
-      extra_size / 1024.0);
-
-  CAMLreturn(Val_unit);
-}
 
 /***** Output *****/
 
@@ -852,24 +799,43 @@ static void send_frame(AVCodecContext *avctx, const AVFrame *frame)
  * AVERROR(EAGAIN): needs a frame to be send for another packet to be
  * received
  * AVERROR_EOF: encoder was already flushed */
-static int receive_packet(AVCodecContext *avctx, AVPacket *pkt)
+CAMLprim value receive_packet(value _output_stream)
 {
-    int ret;
+  CAMLparam1(_output_stream);
+  CAMLlocal2(ans, _pkt);
 
-    switch (ret = avcodec_receive_packet(avctx, pkt)) {
+  int ret;
+  OutputStream *output_stream =
+    OutputStream_val(_output_stream);
+  AVCodecContext *avctx = output_stream->enc_ctx;
+  AVPacket *pkt;
+
+  pkt = alloc_packet_value(&_pkt);
+
+  switch (ret = avcodec_receive_packet(avctx, pkt)) {
     case 0:
+      ans = caml_alloc(1, 0);
+      Store_field(ans, 0, _pkt);
+      break;
+
     case AVERROR(EAGAIN):
+      ans = caml_alloc(1, 1);
+      Store_field(ans, 0, PVV_Again);
+      break;
+
     case AVERROR_EOF:
-        break;
+      ans = caml_alloc(1, 1);
+      Store_field(ans, 0, PVV_End_of_file);
+      break;
 
     default:
-        av_log(NULL, AV_LOG_FATAL,
-               "Unexpected error while receiving packet: %s.\n",
-               av_err2str(ret));
-        exit(1);
-    }
+      av_log(NULL, AV_LOG_FATAL,
+          "Unexpected error while receiving packet: %s.\n",
+          av_err2str(ret));
+      exit(1);
+  }
 
-    return ret;
+  CAMLreturn(ans);
 }
 
 static inline av_const int mid_pred(int a, int b, int c)
@@ -889,154 +855,107 @@ static inline av_const int mid_pred(int a, int b, int c)
 }
 
 // XXX
-static void write_packet(AVPacket *pkt,
-    OutputStream *ost, OutputFile *output_file)
+CAMLprim value write_packet(value _output_file,
+    value _stream_index,
+    value _output_stream,
+    value _pkt)
 {
-    AVFormatContext *s = output_file->ctx;
-    int ret;
-    int i;
-    uint8_t *sd;
+  CAMLparam4(_output_file, _stream_index,
+      _output_stream, _pkt);
 
-    sd = av_packet_get_side_data(pkt, AV_PKT_DATA_QUALITY_STATS,
-                                          NULL);
-    ost->quality = sd ? AV_RL32(sd) : -1;
-    ost->pict_type = sd ? sd[4] : AV_PICTURE_TYPE_NONE;
-
-    for (i = 0; i<FF_ARRAY_ELEMS(ost->error); i++) {
-        if (sd && i < sd[5])
-            ost->error[i] = AV_RL64(sd + 8 + 8*i);
-        else
-            ost->error[i] = -1;
-    }
-
-    if (ost->st->avg_frame_rate.num) {
-        if (pkt->duration > 0)
-            av_log(NULL, AV_LOG_WARNING, "Overriding packet duration by frame rate, this should not happen\n");
-        pkt->duration =
-          av_rescale_q(1,
-              av_inv_q(ost->st->avg_frame_rate),
-              ost->st->time_base);
-    }
-
-    // XXX
-    av_packet_rescale_ts(pkt, ost->st->time_base, ost->st->time_base);
-
-    if (pkt->dts != AV_NOPTS_VALUE &&
-        pkt->pts != AV_NOPTS_VALUE &&
-        pkt->dts > pkt->pts) {
-        av_log(s, AV_LOG_WARNING, "Invalid DTS: %"PRId64" PTS: %"PRId64" in output stream %d, replacing by guess\n",
-               pkt->dts, pkt->pts, ost->st->index);
-        pkt->pts =
-        pkt->dts = mid_pred(pkt->pts,
-                            pkt->dts,
-                            ost->last_mux_dts + 1);
-    }
-    if (pkt->dts != AV_NOPTS_VALUE && ost->last_mux_dts != AV_NOPTS_VALUE) {
-        int64_t max = ost->last_mux_dts + 1;
-        if (pkt->dts < max) {
-            av_log(s, AV_LOG_WARNING,
-                "Non-monotonous DTS in output stream "
-                "%d; previous: %"PRId64", current: %"PRId64"; ",
-                ost->st->index, ost->last_mux_dts, pkt->dts);
-            av_log(s, AV_LOG_WARNING,
-                "changing to %"PRId64". This may result "
-                "in incorrect timestamps in the output file.\n",
-                max);
-            if (pkt->pts >= pkt->dts)
-                pkt->pts = FFMAX(pkt->pts, max);
-            pkt->dts = max;
-        }
-    }
-    ost->last_mux_dts = pkt->dts;
-
-    ost->data_size += pkt->size;
-    ost->packets_written++;
-
-    pkt->stream_index = ost->st->index;
-
-    switch (ret = av_interleaved_write_frame(s, pkt)) {
-    case 0:
-        break;
-
-    default:
-        av_log(NULL, AV_LOG_FATAL,
-            "Unexpected error interleaving a frame: %s\n",
-            av_err2str(ret));
-        exit(1);
-    }
-
-    av_packet_unref(pkt);
-}
-
-/* 0: received packet and wrote it to file
- * AVERROR(EAGAIN): needs a frame to be send for another packet
- * to be received
- * AVERROR_EOF: encoder was already flushed */
-static int receive_and_write_packet(OutputStream *ost,
-    OutputFile *output_file)
-{
+  OutputFile *output_file =
+    OutputFile_val(_output_file);
+  int stream_index = Int_val(_stream_index);
+  AVStream *st = output_file->ctx->streams[stream_index];
+  OutputStream *output_stream =
+    OutputStream_val(_output_stream);
+  AVPacket *pkt = Packet_val(_pkt);
+  AVCodecContext *enc = output_stream->enc_ctx;
+  AVFormatContext *s = output_file->ctx;
   int ret;
-  AVCodecContext *enc = ost->enc_ctx;
-  AVPacket pkt;
-  av_init_packet(&pkt);
+  int i;
+  uint8_t *sd;
 
-  switch (ret = receive_packet(enc, &pkt)) {
+  if (pkt->pts == AV_NOPTS_VALUE && !(enc->codec->capabilities & AV_CODEC_CAP_DELAY)) {
+    //pkt->pts = output_stream->last_pts;
+    exit(1);
+  }
+
+  av_log(NULL, AV_LOG_ERROR,
+      "output packet: pts=%ld ; dts=%ld\n",
+      pkt->pts, pkt->dts);
+
+  av_packet_rescale_ts(pkt, enc->time_base,
+      st->time_base);
+
+  sd = av_packet_get_side_data(pkt, AV_PKT_DATA_QUALITY_STATS,
+      NULL);
+  output_stream->quality = sd ? AV_RL32(sd) : -1;
+  output_stream->pict_type = sd ? sd[4] : AV_PICTURE_TYPE_NONE;
+
+  for (i = 0; i<FF_ARRAY_ELEMS(output_stream->error); i++) {
+    if (sd && i < sd[5])
+      output_stream->error[i] = AV_RL64(sd + 8 + 8*i);
+    else
+      output_stream->error[i] = -1;
+  }
+
+  if (st->avg_frame_rate.num) {
+    if (pkt->duration > 0)
+      av_log(NULL, AV_LOG_WARNING, "Overriding packet duration by frame rate, this should not happen\n");
+    pkt->duration =
+      av_rescale_q(1,
+          av_inv_q(st->avg_frame_rate),
+          st->time_base);
+  }
+
+  // XXX
+  av_packet_rescale_ts(pkt, st->time_base, st->time_base);
+
+  if (pkt->dts != AV_NOPTS_VALUE &&
+      pkt->pts != AV_NOPTS_VALUE &&
+      pkt->dts > pkt->pts) {
+    av_log(s, AV_LOG_WARNING, "Invalid DTS: %"PRId64" PTS: %"PRId64" in output stream %d, replacing by guess\n",
+        pkt->dts, pkt->pts, st->index);
+    pkt->pts =
+      pkt->dts = mid_pred(pkt->pts,
+          pkt->dts,
+          output_stream->last_mux_dts + 1);
+  }
+  if (pkt->dts != AV_NOPTS_VALUE && output_stream->last_mux_dts != AV_NOPTS_VALUE) {
+    int64_t max = output_stream->last_mux_dts + 1;
+    if (pkt->dts < max) {
+      av_log(s, AV_LOG_WARNING,
+          "Non-monotonous DTS in output stream "
+          "%d; previous: %"PRId64", current: %"PRId64"; ",
+          st->index, output_stream->last_mux_dts, pkt->dts);
+      av_log(s, AV_LOG_WARNING,
+          "changing to %"PRId64". This may result "
+          "in incorrect timestamps in the output file.\n",
+          max);
+      if (pkt->pts >= pkt->dts)
+        pkt->pts = FFMAX(pkt->pts, max);
+      pkt->dts = max;
+    }
+  }
+  output_stream->last_mux_dts = pkt->dts;
+
+  pkt->stream_index = st->index;
+
+  switch (ret = av_interleaved_write_frame(s, pkt)) {
     case 0:
-      if (pkt.pts == AV_NOPTS_VALUE && !(enc->codec->capabilities & AV_CODEC_CAP_DELAY)) {
-        //pkt.pts = ost->last_pts;
-        exit(1);
-      }
-      av_log(NULL, AV_LOG_ERROR,
-          "output packet: pts=%ld ; dts=%ld\n",
-          pkt.pts, pkt.dts);
-
-      av_packet_rescale_ts(&pkt, enc->time_base, ost->st->time_base);
-
-      write_packet(&pkt, ost, output_file);
-      break;
-
-    case AVERROR(EAGAIN):
-      break;
-
-    case AVERROR_EOF:
       break;
 
     default:
       av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error while encoding stream #%d: %s\n",
-          ost->st->index, av_err2str(ret));
+          "Unexpected error interleaving a frame: %s\n",
+          av_err2str(ret));
       exit(1);
   }
 
-  return ret;
-}
+  av_packet_unref(pkt);
 
-/* receive packets from the encoder and write them to file
- * AVERROR(EAGAIN): encoder needs more frmes to produce packets
- * AVERROR_EOF: encoder was flushed */
-static int receive_and_write_packets(OutputFile *output_file,
-    OutputStream *ost)
-{
-    int ret;
-
-    while (!(ret = receive_and_write_packet(ost, output_file))) {
-    }
-
-    switch (ret) {
-    case AVERROR(EAGAIN):
-        break;
-
-    case AVERROR_EOF:
-        break;
-
-    default:
-        av_log(NULL, AV_LOG_FATAL,
-               "Unexpected error while encoding stream #%d: %s\n",
-               ost->st->index, av_err2str(ret));
-        exit(1);
-    }
-
-    return ret;
+  CAMLreturn(Val_unit);
 }
 
 CAMLprim value write_trailer(value _output_file)
@@ -1059,43 +978,34 @@ CAMLprim value write_trailer(value _output_file)
   CAMLreturn(Val_unit);
 }
 
-/* write a frame to file */
-CAMLprim value feed_frame(value _output_file,
-    value _output_stream,
-    value _last_frame,
-    value _pts)
+CAMLprim value send_frame_to_stream(value _output_stream,
+    value _last_frame_opt)
 {
-  CAMLparam4(_output_file,
-      _output_stream,
-      _last_frame,
-      _pts);
+  CAMLparam2(_output_stream, _last_frame_opt);
+  CAMLlocal2(_last_frame, _pts);
 
-  int ret;
-  OutputFile *output_file = OutputFile_val(_output_file);
   OutputStream *output_stream =
     OutputStream_val(_output_stream);
-  AVFrame *last_frame = Frame_val(_last_frame);
-  int64_t pts = Int64_val(_pts);
-  int64_t last_frame_pts = last_frame->pts;
 
-  last_frame->quality = output_stream->enc_ctx->global_quality;
-  last_frame->pict_type = 0;
+  if (Is_block(_last_frame_opt)) {
+    _last_frame = Field(Field(_last_frame_opt, 0), 0);
+    _pts = Field(Field(_last_frame_opt, 0), 1);
+    AVFrame *last_frame = Frame_val(_last_frame);
+    int64_t pts = Int64_val(_pts);
+    int64_t last_frame_pts = last_frame->pts;
 
-  last_frame->pts = pts;
-  send_frame(output_stream->enc_ctx, last_frame);
-  last_frame->pts = last_frame_pts;
+    last_frame->quality = output_stream->enc_ctx->global_quality;
+    last_frame->pict_type = 0;
 
-  output_stream->frames_encoded++;
+    last_frame->pts = pts;
+    send_frame(output_stream->enc_ctx, last_frame);
+    last_frame->pts = last_frame_pts;
+  } else {
+    av_log(NULL, AV_LOG_ERROR, "flush_output_stream\n");
 
-  switch (ret = receive_and_write_packets(output_file, output_stream)) {
-    case AVERROR(EAGAIN):
-      break;
+    send_frame(output_stream->enc_ctx, NULL);
 
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected error encoding video: %s\n",
-          av_err2str(ret));
-      exit(1);
+    output_stream->finished = 1;
   }
 
   CAMLreturn(Val_unit);
@@ -1138,20 +1048,24 @@ CAMLprim value rescale_output_frame_pts(value _output_stream,
   CAMLreturn(Val_unit);
 }
 
-CAMLprim value setup_field_order(value _output_stream,
+CAMLprim value setup_field_order(value _output_file,
+    value _stream_index,
     value _last_frame)
 {
-  CAMLparam2(_output_stream, _last_frame);
+  CAMLparam3(_output_file, _stream_index,
+    _last_frame);
 
-  OutputStream *output_stream =
-    OutputStream_val(_output_stream);
+  OutputFile *output_file =
+    OutputFile_val(_output_file);
+  int stream_index = Int_val(_stream_index);
+  AVStream *st = output_file->ctx->streams[stream_index];
   AVFrame *last_frame = Frame_val(_last_frame);
 
   if (last_frame->interlaced_frame)
-    output_stream->st->codecpar->field_order =
+    st->codecpar->field_order =
       last_frame->top_field_first ? AV_FIELD_TB:AV_FIELD_BT;
   else
-    output_stream->st->codecpar->field_order =
+    st->codecpar->field_order =
       AV_FIELD_PROGRESSIVE;
 
   CAMLreturn(Val_unit);
@@ -1163,37 +1077,5 @@ CAMLprim value frame_pts(value _frame)
 
   AVFrame *frame = Frame_val(_frame);
 
-  /* XXX round this value? */
   CAMLreturn(caml_copy_int64(frame->pts));
-}
-
-/* flush the encoder and write the remaining packets to file */
-CAMLprim value flush_output_stream(value _output_file,
-    value _output_stream)
-{
-  CAMLparam2(_output_file, _output_stream);
-
-  av_log(NULL, AV_LOG_ERROR, "flush_output_stream\n");
-
-  int ret;
-  OutputFile *output_file = OutputFile_val(_output_file);
-  OutputStream *output_stream =
-    OutputStream_val(_output_stream);
-
-  send_frame(output_stream->enc_ctx, NULL);
-
-  output_stream->finished = 1;
-
-  switch (ret = receive_and_write_packets(output_file, output_stream)) {
-    case AVERROR_EOF:
-      break;
-
-    default:
-      av_log(NULL, AV_LOG_FATAL,
-          "Unexpected missing EOF while encoding stream #%d: %s\n",
-          output_stream->st->index, av_err2str(ret));
-      exit(1);
-  }
-
-  CAMLreturn(Val_unit);
 }
