@@ -67,19 +67,11 @@ let () =
   Avutil.Log.set_level `Warning ;
 
   let filter_graph =
-    let filter_graph_desc =
-      "[0:v:0]split[foo][bar],[foo]select=lte(n\\,1)[boo],[bar]select=lte(n\\,0)[far],[boo][far]concat=n=2:v=1:a=0"
-        (*
-      "[0:v:0]select=gte(n\\,0),setpts=PTS+1/FR/TB"
-      "[0:v:0]select=eq(n\\,0)+eq(n\\,1)+eq(n\\,2)+eq(n\\,3)+eq(n\\,4)"
-      "[0:v:0]split[foo][bar],[foo]select=eq(n\\,2)+eq(n\\,3)+eq(n\\,4)[foofoo],[bar]select=eq(n\\,0)+eq(n\\,1)+eq(n\\,2)[barbar]"
-      "[0:v:0]split"
-      "[0:v:0]split,vstack"
-      "[0:v:0]split[foo],copy,[foo]vstack,split"
-      "[0:v:0]select=eq(n\\,0)+eq(n\\,3),split[foo],copy,[foo]vstack,split"
-         *)
-    in
-    Avfilter.Graph.make filter_graph_desc
+    Avfilter.Graph.make [
+      ["0:v:0"],"select=between(pts,0/25/TB,2/25/TB)",["baz"] ;
+      ["baz"],"setpts=PTS+0/25/TB",["bar"] ;
+      ["bar"],"select=between(pts,0/25/TB,2/25/TB)",[] ;
+    ]
   in
 
   let filter_graph,input_file,output_file =

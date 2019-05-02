@@ -4,8 +4,26 @@ module Graph = struct
   type input
   type output
   type t = input array * filters * output array
+  type description = (string list * string * string list) list
+
+  let compile =
+    let make_filter =
+      let make_pads = function
+        | [] -> ""
+        | l -> "[" ^ (String.concat "][" l) ^ "]"
+      in
+      let escape =
+        let regexp = Str.regexp "," in
+        Str.global_replace regexp "\\\\\\0"
+      in
+      fun (li,s,lo) ->
+        make_pads li ^ escape s ^ make_pads lo
+    in
+    fun description ->
+      String.concat "," @@ List.map make_filter description
 
   external make : string -> t = "make_filter_graph"
+  let make description = make @@ compile description
 
   external config : filters -> unit = "graph_config"
   let config (_,filters,_) =

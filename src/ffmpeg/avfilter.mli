@@ -4,8 +4,9 @@ module Graph : sig
   type input
   type output
   type t
+  type description = (string list * string * string list) list
 
-  val make : string -> t
+  val make : description -> t
 
   val config : t -> unit
 
