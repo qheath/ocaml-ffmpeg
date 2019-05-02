@@ -4,7 +4,10 @@ module Graph : sig
   type input
   type output
   type t
-  type description = (string list * string * string list) list
+  type point = float * float
+  type description
+
+  val build_description : (point * point list * point) -> description
 
   val make : description -> t
 
