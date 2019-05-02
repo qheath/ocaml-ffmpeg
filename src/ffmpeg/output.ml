@@ -18,6 +18,8 @@ module File : sig
 
   val fold : ('a -> 'accum -> 'accum) -> 'a t -> 'accum -> 'accum
 
+  val name : 'a t -> string
+
 end = struct
 
   type payload
@@ -57,7 +59,16 @@ end = struct
       (fun accum elt -> f elt accum)
       seed file.streams
 
+  external output_file_name : payload -> string = "output_file_name"
+  let name file = output_file_name file.payload
+
 end
+
+let print_data_line header index name (nb_frames,nb_packets,data_size) =
+  Format.printf
+    "%s #%d (%s): %Ld frames encoded; %Ld packets muxed (%Ld bytes); \n"
+    header index name
+    nb_frames nb_packets data_size
 
 module Stream : sig
 
@@ -65,6 +76,7 @@ module Stream : sig
   type t = {
     payload        : payload ;
     filter         : Avfilter.Output.t ;
+    eof            : bool ;
     last_frame_pts : (Avutil.video Avutil.frame * int64) option ;
     data_size      : int64 ;
     nb_packets     : int64 ;
@@ -87,12 +99,15 @@ module Stream : sig
 
   val fold : (t -> 'accum -> 'accum) -> t File.t -> 'accum -> 'accum
 
+  val print_stream_stats : int -> t -> unit
+
 end = struct
 
   type payload
   type t = {
     payload        : payload ;
     filter         : Avfilter.Output.t ;
+    eof            : bool ;
     last_frame_pts : (Avutil.video Avutil.frame * int64) option ;
     data_size      : int64 ;
     (* combined size of all the packets written *)
@@ -192,6 +207,7 @@ end = struct
     {
       payload ;
       filter ;
+      eof = false ;
       last_frame_pts = None ;
       data_size = 0L ;
       nb_packets = 0L ;
@@ -349,11 +365,16 @@ end = struct
         | `Again,_ -> assert false
       in
       { stream with
+        eof = true ;
         last_frame_pts = None ;
       }
 
   let filter_name stream =
     Avfilter.Output.name stream.filter
+
+  external media_type_of_output_stream : payload -> string = "media_type_of_output_stream"
+  let media_type stream =
+    media_type_of_output_stream stream.payload
 
   external name_of_output_stream : payload -> string = "name_of_output_stream"
   let name stream =
@@ -385,10 +406,6 @@ end = struct
       muxer_options
       file.File.payload
       (Array.map (fun stream -> stream.payload) file.File.streams)
-
-  external output_stream_eof : payload -> bool = "output_stream_eof"
-  let eof stream =
-    output_stream_eof stream.payload
 
   (* open all output files,
    * set up the Filters *)
@@ -469,7 +486,7 @@ end = struct
   (* pop all frames from all sink buffers and write them to file*)
   let reap_filters file =
     let aux i stream =
-      if eof stream
+      if stream.eof
       then stream
       else reap_filter file i stream
     in
@@ -478,6 +495,15 @@ end = struct
   let init_muxer file =
     open_streams file ;
     open_muxer file
+
+  let print_stream_stats index stream =
+    print_data_line
+      "  Output stream"
+      index
+      (media_type stream)
+      (stream.nb_frames,
+       stream.nb_packets,
+       stream.data_size)
 
 end
 
@@ -493,35 +519,20 @@ let close file =
   File.write_trailer file
 
 external print_report : bool -> File.payload -> (Stream.payload * int64) array -> int64 = "print_report"
-let print_report ?(last=false) output_file =
+let print_report ?(last=false) file =
   print_report last
-    output_file.File.payload
+    file.File.payload
     (Array.map
        (fun stream ->
           stream.Stream.payload,stream.Stream.nb_frames)
-       output_file.File.streams)
+       file.File.streams)
 
-let print_data_line header index name (nb_frames,nb_packets,data_size) =
-  Format.printf
-    "%s #%d (%s): %Ld frames encoded; %Ld packets muxed (%Ld bytes); \n"
-    header index name
-    nb_frames nb_packets data_size
-
-let print_output_stream_stats index stream =
-  print_data_line
-    "  Output stream"
-    index
-    "?" (* av_get_media_type_string(output_stream->enc_ctx->codec_type) *)
-    (stream.Stream.nb_frames,
-     stream.Stream.nb_packets,
-     stream.Stream.data_size)
-
-let print_file_stats output_file =
+let print_file_stats file =
   (0L,0L,0L) |> Stream.fold
     (fun stream (accum_nb_frames,accum_nb_packets,accum_data_size) ->
        Int64.add accum_nb_frames stream.Stream.nb_frames,
        Int64.add accum_nb_packets stream.Stream.nb_packets,
        Int64.add accum_data_size stream.Stream.data_size)
-    output_file
-  |> (print_data_line "Output file" (-1) (* output_file->ctx->url *) "?") ;
-  Stream.iteri (print_output_stream_stats) output_file
+    file
+  |> (print_data_line "Output file" (-1) (File.name file)) ;
+  Stream.iteri (Stream.print_stream_stats) file

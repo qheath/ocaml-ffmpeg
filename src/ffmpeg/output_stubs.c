@@ -15,6 +15,16 @@
 
 /***** Output file *****/
 
+CAMLprim value output_file_name(value _output_file)
+{
+  CAMLparam1(_output_file);
+
+  OutputFile *output_file =
+    OutputFile_val(_output_file);
+
+  CAMLreturn(caml_copy_string(output_file->ctx->url));
+}
+
 void free_output_file(OutputFile *output_file)
 {
   if (output_file->ctx) {
@@ -169,6 +179,16 @@ CAMLprim value open_muxer(value _muxer_options,
 
 /***** Output stream *****/
 
+CAMLprim value media_type_of_output_stream(value _output_stream)
+{
+  CAMLparam1(_output_stream);
+
+  OutputStream *output_stream =
+    OutputStream_val(_output_stream);
+
+  CAMLreturn(caml_copy_string(av_get_media_type_string(output_stream->enc_ctx->codec_type)));
+}
+
 CAMLprim value name_of_output_stream(value _output_stream)
 {
   CAMLparam1(_output_stream);
@@ -176,7 +196,7 @@ CAMLprim value name_of_output_stream(value _output_stream)
   OutputStream *output_stream =
     OutputStream_val(_output_stream);
 
-  CAMLreturn(caml_copy_string(output_stream->enc_ctx->codec ? output_stream->enc_ctx->codec->name : "?"));
+  CAMLreturn(caml_copy_string(output_stream->enc_ctx->codec->name));
 }
 
 static void finalise_output_stream(value v)
@@ -266,7 +286,8 @@ static void setup_output_stream(OutputFile *output_file,
   st->sample_aspect_ratio  = (AVRational){1, 1};
   st->disposition          = AV_DISPOSITION_DEFAULT;
   st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-  st->avg_frame_rate       = (AVRational){30000, 1001};
+  st->avg_frame_rate       = (AVRational){25000, 1000};
+  //st->avg_frame_rate       = (AVRational){30000, 1001};
 
   set_encoder(st, codec);
 
@@ -547,17 +568,6 @@ CAMLprim value open_output_stream(value _output_file,
   }
 
   CAMLreturn(Val_unit);
-}
-
-CAMLprim value output_stream_eof(value _output_stream)
-{
-  CAMLparam1(_output_stream);
-  CAMLlocal1(ans);
-
-  OutputStream *output_stream = OutputStream_val(_output_stream);
-  ans = Val_bool(output_stream->finished);
-
-  CAMLreturn(ans);
 }
 
 
@@ -1004,8 +1014,6 @@ CAMLprim value send_frame_to_stream(value _output_stream,
     av_log(NULL, AV_LOG_ERROR, "flush_output_stream\n");
 
     send_frame(output_stream->enc_ctx, NULL);
-
-    output_stream->finished = 1;
   }
 
   CAMLreturn(Val_unit);
@@ -1038,9 +1046,8 @@ CAMLprim value rescale_output_frame_pts(value _output_stream,
           enc->time_base);
 
     av_log(NULL, AV_LOG_ERROR,
-        "output frame: pts=%ld+%ld(%ld+%ld)\n",
-        next_frame->pts, 1l,
-        pts, duration);
+        "output frame: pts=%ld(%ld+%ld)\n",
+        next_frame->pts, pts, duration);
 
     next_frame->pts = pts;
   }

@@ -19,6 +19,8 @@ module File : sig
 
   val fold : ('a -> 'accum -> 'accum) -> 'a t -> 'accum -> 'accum
 
+  val name : 'a t -> string
+
 end = struct
 
   type payload
@@ -71,7 +73,16 @@ end = struct
       (fun accum elt -> f elt accum)
       seed file.streams
 
+  external input_file_name : payload -> string = "input_file_name"
+  let name file = input_file_name file.payload
+
 end
+
+let print_data_line header index name (nb_packets,data_size,nb_frames) =
+  Format.printf
+    "%s #%d (%s): %Ld packets read (%Ld bytes); %Ld frames decoded; \n"
+    header index name
+    nb_packets data_size nb_frames
 
 module Stream : sig
 
@@ -97,6 +108,8 @@ module Stream : sig
    *)
 
   val fold : (t -> 'accum -> 'accum) -> t option File.t -> 'accum -> 'accum
+
+  val print_stream_stats : int -> t -> unit
 
 end = struct
 
@@ -191,6 +204,10 @@ end = struct
     Avfilter.Graph.iteri_inputs
       (open_source_stream file) filter_graph ;
     filter_graph,file
+
+  external media_type_of_input_stream : payload -> string = "media_type_of_input_stream"
+  let media_type stream =
+    media_type_of_input_stream stream.payload
 
   external name_of_input_stream : payload -> string = "name_of_input_stream"
   let name stream =
@@ -365,6 +382,15 @@ end = struct
       (* XXX pick the right file *)
       seed_filters_from_file file
 
+  let print_stream_stats index stream =
+    print_data_line
+      "  Input stream"
+      index
+      (media_type stream)
+      (stream.nb_packets,
+       stream.data_size,
+       stream.nb_frames)
+
 end
 
 let load_path filter_graph path =
@@ -375,29 +401,12 @@ let init file =
   File.init_thread file ;
   Stream.dump_mappings file
 
-let print_data_line header index name (nb_packets,data_size,nb_frames) =
-  Format.printf
-    "%s #%d (%s): %Ld packets read (%Ld bytes); %Ld frames decoded; \n"
-    header index name
-    nb_packets data_size nb_frames
-
-let print_input_stream_stats stream index =
-  print_data_line
-    "  Input stream"
-    index
-    "?"
-    (stream.Stream.nb_packets,
-     stream.Stream.data_size,
-     stream.Stream.nb_frames)
-
-let print_file_stats input_file =
+let print_file_stats file =
   (0L,0L,0L) |> Stream.fold
     (fun stream (accum_nb_packets,accum_data_size,accum_nb_frames) ->
        Int64.add accum_nb_packets stream.Stream.nb_packets,
        Int64.add accum_data_size stream.Stream.data_size,
        Int64.add accum_nb_frames stream.Stream.nb_frames)
-    input_file
-  |> (print_data_line "Input file" (-1) "?") ;
-  Stream.iteri
-    (fun i stream -> print_input_stream_stats stream i)
-    input_file
+    file
+  |> (print_data_line "Input file" (-1) (File.name file)) ;
+  Stream.iteri Stream.print_stream_stats file

@@ -14,6 +14,16 @@
 
 /***** Input file *****/
 
+CAMLprim value input_file_name(value _input_file)
+{
+  CAMLparam1(_input_file);
+
+  InputFile *input_file =
+    InputFile_val(_input_file);
+
+  CAMLreturn(caml_copy_string(input_file->ctx->url));
+}
+
 /* cause the input thread to stop */
 static void free_input_thread(InputFile *input_file)
 {
@@ -226,6 +236,16 @@ CAMLprim value init_input_thread(value _input_file)
 
 
 /***** Input stream *****/
+
+CAMLprim value media_type_of_input_stream(value _input_stream)
+{
+  CAMLparam1(_input_stream);
+
+  InputStream *input_stream =
+    InputStream_val(_input_stream);
+
+  CAMLreturn(caml_copy_string(av_get_media_type_string(input_stream->dec_ctx->codec_type)));
+}
 
 CAMLprim value name_of_input_stream(value _input_stream)
 {

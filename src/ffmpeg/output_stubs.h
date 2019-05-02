@@ -4,8 +4,6 @@
 
 typedef struct OutputFile {
   AVFormatContext *ctx;
-
-  int finished; /* no more packets should be written */
 } OutputFile;
 
 #define OutputFile_val(v) (*(OutputFile**)Data_custom_val(v))
@@ -24,8 +22,6 @@ typedef struct OutputStream {
 
   /* packet picture type */
   int pict_type;
-
-  int finished; /* no more packets should be written */
 
   /* frame encode sum of squared error values */
   int64_t error[4];
