@@ -7,6 +7,14 @@ module Graph = struct
   type point = float * float
   type description = (string list * string * string list) list
 
+  (* time-based *)
+  let select_lt_str x =
+    Printf.sprintf "select=lt(pts,%f/TB)" x
+  let setpts_str a b c =
+    Printf.sprintf "setpts=(PTS-%f/TB)*%f+%f/TB" a b c
+  let select_gte_str x =
+    Printf.sprintf "select=gte(pts,%f/TB)" x
+
   let build_description =
     let split ~n =
       [],
@@ -19,18 +27,21 @@ module Graph = struct
       (match n with
        | Some n -> [ Printf.sprintf "branch%d" n ]
        | None -> []),
-      Printf.sprintf "select=lt(pts,%f/25/TB)" x,
+      select_lt_str x,
       []
-    and setpts ~n ((x0,y0),(x1,y1)) =
+    and setpts ((x0,y0),(x1,y1)) =
       [],
-      Printf.sprintf "setpts=(PTS-%f/25/TB)*%f+%f/25/TB"
-        x0 ((y1-.y0)/.(x1-.x0)) y0,
+      setpts_str x0 ((y1-.y0)/.(x1-.x0)) y0,
+      []
+    and fifo ~n =
+      [],
+      "fifo",
       [ Printf.sprintf "image%d" n ]
     and select_gte ?m ~n (x,_) =
       (match m with
        | Some m -> [Printf.sprintf "%d:v:%d" m n]
        | None -> [ Printf.sprintf "trunk%d" n ]),
-      Printf.sprintf "select=gte(pts,%f/25/TB)" x,
+      select_gte_str x,
       []
     and images ~n =
       List.init n (Printf.sprintf "image%d"),
@@ -58,7 +69,9 @@ module Graph = struct
             (* add an upper limit to the branch *)
             select_lt ~n point1 ;
             (* resize the branch *)
-            setpts ~n (point0,point1) ;
+            setpts (point0,point1) ;
+            (* delay the branch *)
+            fifo ~n ;
             (* add a lower limit to the trunk *)
             select_gte ~n point1 ;
           ] accum
@@ -70,7 +83,9 @@ module Graph = struct
           (* add an upper limit to the trunk *)
           select_lt last_point ;
           (* resize the trunk *)
-          setpts ~n:nb_pairs (penultimate_point,last_point) ;
+          setpts (penultimate_point,last_point) ;
+          (* delay the trunk *)
+          fifo ~n:nb_pairs ;
           (* merge all outputs *)
           images ~n:(nb_pairs+1) ;
         ] accum
