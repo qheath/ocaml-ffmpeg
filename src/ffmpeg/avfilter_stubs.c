@@ -2,11 +2,25 @@
 
 #include "avfilter_stubs.h"
 
+#include <libavfilter/avfilter.h>
 #include <libavfilter/buffersrc.h>
 #include <libavfilter/buffersink.h>
 
 
 /***** FilterInOut *****/
+
+CAMLprim value filter_in_out_name(value _filter_in_out)
+{
+  CAMLparam1(_filter_in_out);
+  CAMLlocal1(ans);
+
+  AVFilterInOut *filter_in_out =
+    FilterInOut_val(_filter_in_out);
+
+  ans = caml_copy_string(filter_in_out->name);
+
+  CAMLreturn(ans);
+}
 
 static void finalise_filter_in_out(value v)
 {
@@ -313,6 +327,51 @@ CAMLprim value graph_dump(value _level, value _filter_graph)
   av_free(dump);
 
   CAMLreturn(Val_unit);
+}
+
+int avfilter_graph_request_oldest(AVFilterGraph *graph)
+{
+    AVFilterLink *oldest = graph->sink_links[0];
+    int64_t frame_count;
+    int r;
+
+    while (graph->sink_links_count) {
+        oldest = graph->sink_links[0];
+        if (oldest->dst->filter->activate) {
+            /* For now, buffersink is the only filter implementing activate. */
+            r = av_buffersink_get_frame_flags(oldest->dst, NULL,
+                                              AV_BUFFERSINK_FLAG_PEEK);
+            if (r != AVERROR_EOF)
+                return r;
+        } else {
+            r = ff_request_frame(oldest);
+        }
+        if (r != AVERROR_EOF)
+            break;
+        av_log(oldest->dst, AV_LOG_DEBUG, "EOF on sink link %s:%s.\n",
+               oldest->dst ? oldest->dst->name : "unknown",
+               oldest->dstpad ? oldest->dstpad->name : "unknown");
+        /* EOF: remove the link from the heap */
+        if (oldest->age_index < --graph->sink_links_count)
+            heap_bubble_down(graph, graph->sink_links[graph->sink_links_count],
+                             oldest->age_index);
+        oldest->age_index = -1;
+    }
+    if (!graph->sink_links_count)
+        return AVERROR_EOF;
+    av_assert1(!oldest->dst->filter->activate);
+    av_assert1(oldest->age_index >= 0);
+    frame_count = oldest->frame_count_out;
+    while (frame_count == oldest->frame_count_out) {
+        r = ff_filter_graph_run_once(graph);
+        if (r == AVERROR(EAGAIN) &&
+            !oldest->frame_wanted_out && !oldest->frame_blocked_in &&
+            !oldest->status_in)
+            ff_request_frame(oldest);
+        else if (r < 0)
+            return r;
+    }
+    return 0;
 }
 
 CAMLprim value filter_graph_request_oldest(value _filter_graph)

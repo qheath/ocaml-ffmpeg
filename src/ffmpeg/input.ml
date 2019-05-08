@@ -90,6 +90,7 @@ module Stream : sig
   type t = {
     payload    : payload ;
     filter     : Avfilter.Input.t ;
+    pad        : Avfilter.Pad.t ;
     nb_packets : int64 ;
     data_size  : int64 ;
     nb_frames  : int64 ;
@@ -117,6 +118,8 @@ end = struct
   type t = {
     payload    : payload ;
     filter     : Avfilter.Input.t ;
+    pad        : Avfilter.Pad.t ;
+    (* filter input pad *)
     nb_packets : int64 ;
     (* number of packets successfully read for this stream *)
     data_size  : int64 ;
@@ -147,8 +150,8 @@ end = struct
       file seed
 
   external make_input_stream : File.payload -> int -> (string * string) array -> payload = "make_input_stream"
-  external init_input_filter : File.payload -> int -> Avfilter.Graph.filters -> Avfilter.Graph.input -> Avfilter.Input.t = "init_input_filter"
-  let make file index ?(codec_options=[||]) filters in_filter =
+  external init_input_filter : File.payload -> int -> Avfilter.Graph.filters -> Avfilter.Pad.t -> Avfilter.Input.t = "init_input_filter"
+  let make file index ?(codec_options=[||]) filters pad =
     let payload =
       make_input_stream
         file.File.payload
@@ -159,29 +162,30 @@ end = struct
       init_input_filter
         file.File.payload
         index
-        filters in_filter
+        filters pad
     in
     {
       payload ;
       filter ;
+      pad ;
       nb_packets = 0L ;
       data_size = 0L ;
       nb_frames = 0L ;
     }
 
-  external get_input_stream_index_from_filter : File.payload -> Avfilter.Graph.input -> int = "get_input_stream_index_from_filter"
-  let apply_on_stream f file in_filter =
+  external get_input_stream_index_from_filter : File.payload -> Avfilter.Pad.t -> int = "get_input_stream_index_from_filter"
+  let apply_on_stream f file pad =
     let streams =
       file.File.streams
     and stream_index =
       get_input_stream_index_from_filter
         file.File.payload
-        in_filter
+        pad
     in
     streams.(stream_index) <-
       f stream_index streams.(stream_index)
 
-  let open_source_stream file filters _i in_filter =
+  let open_source_stream file filters _i pad =
     let aux index = function
       | Some _ -> failwith "Input stream used twice"
       | None ->
@@ -192,13 +196,13 @@ end = struct
               (* AVOptions *)
               "threads", "auto" ;
             |]
-            filters in_filter
+            filters pad
         in
         Some stream
     in
     apply_on_stream
       aux
-      file in_filter
+      file pad
 
   let open_source_streams filter_graph file =
     Avfilter.Graph.iteri_inputs
@@ -217,8 +221,9 @@ end = struct
   let dump_mappings file =
     Printf.printf "Input stream mapping:\n" ;
     let aux i stream =
-      Printf.printf "  Stream #%d (%s) -> %s\n"
+      Printf.printf "  Stream #%d[%s] (%s) -> %s\n"
         i
+        (Avfilter.Pad.name stream.pad)
         (name stream)
         (Avfilter.Input.name stream.filter)
     in

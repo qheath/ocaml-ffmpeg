@@ -76,6 +76,7 @@ module Stream : sig
   type t = {
     payload        : payload ;
     filter         : Avfilter.Output.t ;
+    pad            : Avfilter.Pad.t ;
     eof            : bool ;
     last_frame_pts : (Avutil.video Avutil.frame * int64) option ;
     data_size      : int64 ;
@@ -107,6 +108,8 @@ end = struct
   type t = {
     payload        : payload ;
     filter         : Avfilter.Output.t ;
+    pad            : Avfilter.Pad.t ;
+    (* filter output pad *)
     eof            : bool ;
     last_frame_pts : (Avutil.video Avutil.frame * int64) option ;
     data_size      : int64 ;
@@ -196,17 +199,18 @@ end = struct
       file.File.payload
       flags
 
-  external init_output_filter : Avfilter.Graph.filters -> Avfilter.Graph.output -> File.payload -> int -> payload -> Avfilter.Output.t = "init_output_filter"
-  let init_filter filters out_filter file stream_index payload =
+  external init_output_filter : Avfilter.Graph.filters -> Avfilter.Pad.t -> File.payload -> int -> payload -> Avfilter.Output.t = "init_output_filter"
+  let init_filter filters pad file stream_index payload =
     let filter =
       init_output_filter
-        filters out_filter
+        filters pad
         file.File.payload stream_index
         payload
     in
     {
       payload ;
       filter ;
+      pad ;
       eof = false ;
       last_frame_pts = None ;
       data_size = 0L ;
@@ -281,7 +285,7 @@ end = struct
           | `Again,stream -> stream
           | `End_of_file,_ -> assert false
         in
-        aux (stream,Int64.(of_int 1 |> add pts))
+        aux (stream,Int64.succ pts)
       end else stream,pts
     in
     aux (stream,last_pts)
@@ -324,7 +328,7 @@ end = struct
       else
         let next_pts =
           (* last_frame up to the middle, then next_frame *)
-          Int64.(div (of_int 1 |> add last_frame_pts |> add next_frame_pts) (of_int 2))
+          Int64.(div (succ last_frame_pts |> add next_frame_pts) (of_int 2))
         in
         (* correct next_pts's alignment *)
         let stream,next_pts =
@@ -345,7 +349,7 @@ end = struct
     | None -> assert false
     | Some (last_frame,last_pts) ->
       let last_frame_pts = frame_pts last_frame in
-      let next_pts = Int64.(add last_frame_pts @@ of_int 1) in
+      let next_pts = Int64.(succ last_frame_pts) in
       (* XXX get the true length of the clip from this *)
       let stream,_next_pts =
         feed_frame_copies
@@ -368,9 +372,6 @@ end = struct
         eof = true ;
         last_frame_pts = None ;
       }
-
-  let filter_name stream =
-    Avfilter.Output.name stream.filter
 
   external media_type_of_output_stream : payload -> string = "media_type_of_output_stream"
   let media_type stream =
@@ -411,10 +412,10 @@ end = struct
    * set up the Filters *)
   let init_filters filter_graph file =
     let streams =
-      let aux filters stream_index out_filter =
+      let aux filters stream_index pad =
         let payload = make file in
         init_filter
-          filters out_filter
+          filters pad
           file stream_index
           payload
       in
@@ -430,12 +431,14 @@ end = struct
   let dump_mappings file =
     Printf.printf "Output stream mapping:\n" ;
     let aux i stream =
-      Printf.printf "  %s -> Stream #%d (%s)\n"
-        (filter_name stream)
+      Printf.printf "  %s -> Stream #%d[%s] (%s)\n"
+        (Avfilter.Output.name stream.filter)
         i
+        (Avfilter.Pad.name stream.pad)
         (name stream)
     in
-    iteri aux file
+    iteri aux file ;
+    if true then assert false
 
   let open_streams
       ?(codec_options=[|

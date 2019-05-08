@@ -1,123 +1,126 @@
+let escape = function
+  | [] -> (fun str -> str)
+  | chars ->
+    let regexp = Str.regexp @@ String.concat "\\|" chars in
+    Str.global_replace regexp "\\\\\\0"
+
+let concat c l =
+  String.concat c @@ List.map (escape [c]) l
+
+module Filter = struct
+
+  let make_pad =
+    let count = ref 0 in
+    fun () ->
+      let n = !count in
+      incr count ;
+      Printf.sprintf "%x" n
+
+  module Pads = struct
+
+    type desc = string list
+
+    let to_string () = function
+      | [] -> ""
+      | pads -> "[" ^ (String.concat "][" pads) ^ "]"
+
+  end
+
+  module Argument = struct
+
+    type t = string * string option
+
+    let to_string () (key,value) =
+      concat "=" (key::(match value with None -> [] | Some value -> [value]))
+
+  end
+
+  type desc = Pads.desc * (string * Argument.t list) * Pads.desc
+
+  let to_string =
+    fun () (inputs,(name,arguments),outputs) ->
+      Printf.sprintf "%a%s%s%a"
+      Pads.to_string inputs
+      name
+      (match arguments with
+       | [] -> ""
+       | arguments ->
+         "=" ^ (concat ":" @@ List.map (Argument.to_string ()) arguments))
+      Pads.to_string outputs
+
+  type tree =
+    | Lt of float * tree
+    | Gte of float * tree
+    | Split of tree list
+
+  let build =
+    let rec aux accum = function
+      | [] -> List.rev accum
+      | []::t -> aux accum t
+      | ((ilabel,tree)::t1)::t2 ->
+        let filter,labelled_trees = match tree with
+          | Lt (f,tree) ->
+            let olabel = make_pad () in
+            let labelled_tree = olabel,tree in
+            ([ilabel],("select",[Printf.sprintf "lt(pts,%f/TB)" f,None]),[olabel]),
+            [labelled_tree]
+          | Gte (f,tree) ->
+            let olabel = make_pad () in
+            let labelled_tree = olabel,tree in
+            ([ilabel],("select",[Printf.sprintf "Gte(pts,%f/TB)" f,None]),[olabel]),
+            [labelled_tree]
+          | Split trees ->
+            let n = List.length trees
+            and labelled_trees =
+              List.map (fun tree -> make_pad (),tree) trees
+            in
+            let olabels = List.map fst labelled_trees in
+            ([ilabel],("split",["n",Some (string_of_int n)]),olabels),
+            labelled_trees
+        in
+        aux (filter::accum) (labelled_trees::t1::t2)
+    in
+    fun labelled_tree -> aux [] [[labelled_tree]]
+
+end
+
+module Chain = struct
+
+  type desc = Filter.desc list
+
+  let to_string () filters =
+    let str =
+      concat "," @@ List.map (Filter.to_string ()) filters
+    in
+    if true then begin
+      Printf.printf " <<< %S\n%!" str
+    end ;
+    str
+
+end
+
+module Pad = struct
+
+  type t
+
+  external filter_in_out_name : t -> string = "filter_in_out_name"
+  let name in_out =
+    filter_in_out_name in_out
+
+end
+
 module Graph = struct
 
+  type desc = Chain.desc list
+
+  let to_string () chains =
+    concat ";" @@ List.map (Chain.to_string ()) chains
+
   type filters
-  type input
-  type output
-  type t = input array * filters * output array
-  type point = float * float
-  type description = (string list * string * string list) list
-
-  (* time-based *)
-  let select_lt_str x =
-    Printf.sprintf "select=lt(pts,%f/TB)" x
-  let setpts_str a b c =
-    Printf.sprintf "setpts=(PTS-%f/TB)*%f+%f/TB" a b c
-  let select_gte_str x =
-    Printf.sprintf "select=gte(pts,%f/TB)" x
-
-  let build_description =
-    let split ~n =
-      [],
-      "split",
-      [
-        Printf.sprintf "branch%d" n ;
-        Printf.sprintf "trunk%d" n ;
-      ]
-    and select_lt ?n (x,_) =
-      (match n with
-       | Some n -> [ Printf.sprintf "branch%d" n ]
-       | None -> []),
-      select_lt_str x,
-      []
-    and setpts ((x0,y0),(x1,y1)) =
-      [],
-      setpts_str x0 ((y1-.y0)/.(x1-.x0)) y0,
-      []
-    and fifo ~n =
-      [],
-      "fifo",
-      [ Printf.sprintf "image%d" n ]
-    and select_gte ?m ~n (x,_) =
-      (match m with
-       | Some m -> [Printf.sprintf "%d:v:%d" m n]
-       | None -> [ Printf.sprintf "trunk%d" n ]),
-      select_gte_str x,
-      []
-    and images ~n =
-      List.init n (Printf.sprintf "image%d"),
-      Printf.sprintf "interleave=n=%d" n,
-      []
-    in
-    fun (first_point,inner_points,last_point) ->
-      let accum =
-        (* start with a lower limit *)
-        [ select_gte ~m:0 ~n:0 first_point ]
-      in
-      let nb_pairs,pairs_but_last,penultimate_point =
-        let aux (nb_pairs,pairs,point0) point1 =
-          (nb_pairs+1),((nb_pairs,point0,point1)::pairs),point1
-        in
-        List.fold_left aux (0,[],first_point) inner_points
-      in
-      let accum =
-        let aux accum (n,point0,point1) =
-          (* create a branch of index n,
-           * that maps [x0,x1[ to [y0,y1[ *)
-          List.rev_append [
-            (* add a branch to the trunk *)
-            split ~n ;
-            (* add an upper limit to the branch *)
-            select_lt ~n point1 ;
-            (* resize the branch *)
-            setpts (point0,point1) ;
-            (* delay the branch *)
-            fifo ~n ;
-            (* add a lower limit to the trunk *)
-            select_gte ~n point1 ;
-          ] accum
-        in
-        List.fold_left aux accum @@ List.rev pairs_but_last
-      in
-      let accum =
-        List.rev_append [
-          (* add an upper limit to the trunk *)
-          select_lt last_point ;
-          (* resize the trunk *)
-          setpts (penultimate_point,last_point) ;
-          (* delay the trunk *)
-          fifo ~n:nb_pairs ;
-          (* merge all outputs *)
-          images ~n:(nb_pairs+1) ;
-        ] accum
-      in
-      List.rev accum
-
-  let compile =
-    let make_filter =
-      let make_pads = function
-        | [] -> ""
-        | l -> "[" ^ (String.concat "][" l) ^ "]"
-      in
-      let escape =
-        let regexp = Str.regexp "," in
-        Str.global_replace regexp "\\\\\\0"
-      in
-      fun (li,s,lo) ->
-        make_pads li ^ escape s ^ make_pads lo
-    in
-    fun description ->
-      String.concat "," @@ List.map make_filter description
+  type t = Pad.t array * filters * Pad.t array
 
   external make : string -> t = "make_filter_graph"
-  let make description = make @@ compile description
-
-  external config : filters -> unit = "graph_config"
-  let config (_,filters,_) =
-    config filters
-
-  external dump : int -> filters -> unit = "graph_dump"
-  let dump ?(level=`Info) (_,filters,_) =
-    dump (Avutil.Log.int_of_level level) filters
+  let make description = make @@ to_string () description
 
   external request_oldest : filters -> [`Again|`Ok|`End_of_file] = "filter_graph_request_oldest"
   let request_oldest (_,filters,_) =
@@ -129,9 +132,11 @@ module Graph = struct
   let mapi_outputs f (_,filters,outputs) =
     Array.mapi (f filters) outputs
 
-  let init filter_graph =
-    config filter_graph ;
-    dump filter_graph ;
+  external config : filters -> unit = "graph_config"
+  external dump : int -> filters -> unit = "graph_dump"
+  let init ?(level=`Info) (_,filters,_ as filter_graph) =
+    config filters ;
+    dump (Avutil.Log.int_of_level level) filters ;
     filter_graph
 
 end
