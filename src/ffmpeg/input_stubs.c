@@ -691,7 +691,7 @@ CAMLprim value filter_frame(value _input_file,
         av_inv_q(ist->dec_ctx->framerate),
         AV_TIME_BASE_Q);
 
-  av_log(NULL, AV_LOG_ERROR,
+  av_log(NULL, AV_LOG_VERBOSE,
       "input frame: pts=%ld(%ld)\n",
       frame->pts, ist->next_pts);
 
@@ -833,7 +833,8 @@ CAMLprim value flush_input_stream(value _input_file,
   InputStream *ist = InputStream_val(_input_stream);
   Filter *input_filter = Filter_val(_input_filter);
 
-  av_log(NULL, AV_LOG_ERROR, "flush_input_stream\n");
+  av_log(NULL, AV_LOG_VERBOSE,
+    "flush_input_stream\n");
 
   /* flush all the filter inputs attached to the stream */
   next_pts =

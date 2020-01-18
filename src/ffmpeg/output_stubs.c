@@ -891,7 +891,7 @@ CAMLprim value write_packet(value _output_file,
     exit(1);
   }
 
-  av_log(NULL, AV_LOG_ERROR,
+  av_log(NULL, AV_LOG_VERBOSE,
       "output packet: pts=%ld ; dts=%ld\n",
       pkt->pts, pkt->dts);
 
@@ -1011,7 +1011,8 @@ CAMLprim value send_frame_to_stream(value _output_stream,
     send_frame(output_stream->enc_ctx, last_frame);
     last_frame->pts = last_frame_pts;
   } else {
-    av_log(NULL, AV_LOG_ERROR, "flush_output_stream\n");
+    av_log(NULL, AV_LOG_VERBOSE,
+        "flush_output_stream\n");
 
     send_frame(output_stream->enc_ctx, NULL);
   }
@@ -1045,7 +1046,7 @@ CAMLprim value rescale_output_frame_pts(value _output_stream,
           av_inv_q(av_buffersink_get_frame_rate(filter_ctx)),
           enc->time_base);
 
-    av_log(NULL, AV_LOG_ERROR,
+    av_log(NULL, AV_LOG_VERBOSE,
         "output frame: pts=%ld(%ld+%ld)\n",
         next_frame->pts, pts, duration);
 

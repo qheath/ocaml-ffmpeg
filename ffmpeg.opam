@@ -1,11 +1,11 @@
 opam-version: "2.0"
-version: "0.2.1-p4"
+version: "0.2.1-p5"
 maintainer: "Quentin Heath <12143333+qheath@users.noreply.github.com>"
 authors: "The Savonet Team <savonet-users@lists.sourceforge.net>"
 homepage: "https://github.com/qheath/ocaml-ffmpeg"
 bug-reports: "https://github.com/qheath/ocaml-ffmpeg/issues"
 license: "GPL-2"
-synopsis: "Bindings for the ffmpeg library which provides functions for decoding audio and video files"
+synopsis: "Bindings and frontend for the ffmpeg library which provides functions for decoding audio and video files"
 description: """
 OCaml interface for the [FFmpeg] Multimedia framework.
 - Av: demuxers and muxers for reading and writing multimedia container
@@ -17,12 +17,15 @@ OCaml interface for the [FFmpeg] Multimedia framework.
   operations
 - Avdevice: input and output devices for grabbing from and rendering
   to many common multimedia input/output software frameworks
+- Offmpeg: simplified frontend
 
 [FFmpeg]: http://ffmpeg.org/"""
 depends: [
   "ocaml" {>= "4.05.0"}
   "ocamlfind" {build & >= "0.8.1"}
   "dune" {build}
+  "sexplib" {build}
+  "nelist" {build}
   "base-bigarray"
   "base-threads"
 ]

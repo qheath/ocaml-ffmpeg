@@ -437,8 +437,7 @@ end = struct
         (Avfilter.Pad.name stream.pad)
         (name stream)
     in
-    iteri aux file ;
-    if true then assert false
+    iteri aux file
 
   let open_streams
       ?(codec_options=[|
